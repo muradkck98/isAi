@@ -32,6 +32,10 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+
+# Supabase credentials — never commit real keys
+src/config/env.ts
 
 # typescript
 *.tsbuildinfo

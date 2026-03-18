@@ -2,29 +2,76 @@
   "expo": {
     "name": "isAi",
     "slug": "isAi",
+    "scheme": "isai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0F172A"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.isai.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "isAi fotoğraflarınıza erişerek AI görsel tespiti yapar.",
+        "NSPhotoLibraryAddUsageDescription": "isAi analiz sonuçlarını fotoğraf kitaplığınıza kaydedebilir.",
+        "NSCameraUsageDescription": "isAi kameranızı kullanarak çektiğiniz fotoğraflarda AI tespiti yapar.",
+        "NSMicrophoneUsageDescription": "isAi video çekimi sırasında mikrofon erişimi gerektirebilir.",
+        "NSFaceIDUsageDescription": "isAi hesabınızı güvenli şekilde korumak için Face ID kullanabilir."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "package": "com.isai.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "isai",
+              "host": "*"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "isAi fotoğraflarınıza erişerek AI görsel tespiti yapar.",
+          "cameraPermission": "isAi kameranızı kullanarak çektiğiniz fotoğraflarda AI tespiti yapar.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
   }
 }

@@ -1,0 +1,85 @@
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SplashScreen } from '../screens/auth/SplashScreen';
+import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
+import { AuthNavigator } from './AuthNavigator';
+import { MainNavigator } from './MainNavigator';
+import { useAuthStore } from '../store/useAuthStore';
+import { useWalletStore } from '../store/useWalletStore';
+import { RootStackParamList } from '../types';
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+export function RootNavigator() {
+  const {
+    isAuthenticated,
+    hasCompletedOnboarding,
+    isLoading: authLoading,
+    setOnboardingCompleted,
+    initialize,
+    user,
+  } = useAuthStore();
+  const { syncFromSupabase } = useWalletStore();
+  const [showSplash, setShowSplash] = useState(true);
+  const [appReady, setAppReady] = useState(false);
+
+  // Restore Supabase session from SecureStore on app boot
+  useEffect(() => {
+    const boot = async () => {
+      await initialize();
+      setAppReady(true);
+    };
+    boot();
+  }, [initialize]);
+
+  // Sync wallet whenever user logs in
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      syncFromSupabase(user.id).catch(() => {});
+    }
+  }, [isAuthenticated, user?.id]);
+
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setOnboardingCompleted();
+  }, [setOnboardingCompleted]);
+
+  // Show minimal loading screen while restoring session (avoids auth flash)
+  if (!appReady || authLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#020617' }}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'fade',
+        }}
+      >
+        {showSplash ? (
+          <Stack.Screen name="Splash">
+            {() => <SplashScreen onFinish={handleSplashFinish} />}
+          </Stack.Screen>
+        ) : !hasCompletedOnboarding ? (
+          <Stack.Screen name="Onboarding">
+            {() => <OnboardingScreen onComplete={handleOnboardingComplete} />}
+          </Stack.Screen>
+        ) : !isAuthenticated ? (
+          <Stack.Screen name="Auth" component={AuthNavigator} />
+        ) : (
+          <Stack.Screen name="Main" component={MainNavigator} />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
