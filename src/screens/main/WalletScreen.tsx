@@ -19,6 +19,7 @@ import { radius } from '../../theme/radius';
 import { shadows } from '../../theme/shadows';
 import { motion } from '../../theme/motion';
 import { useWalletStore } from '../../store/useWalletStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { TOKEN_PACKS } from '../../constants';
 import { haptic } from '../../utils/haptics';
 import { formatPrice } from '../../utils/format';
@@ -26,12 +27,15 @@ import { formatPrice } from '../../utils/format';
 export function WalletScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { tokens, totalScans, totalPurchased, totalEarnedFromAds, addTokensFromAd } =
+  const { tokens, totalScans, totalPurchased, totalEarnedFromAds, addAdTokensRemote } =
     useWalletStore();
+  const { user } = useAuthStore();
 
-  const handleWatchAd = () => {
+  const handleWatchAd = async () => {
     haptic.success();
-    addTokensFromAd();
+    if (user?.id) {
+      await addAdTokensRemote(user.id);
+    }
   };
 
   return (

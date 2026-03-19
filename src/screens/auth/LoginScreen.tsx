@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { useForm, Controller } from 'react-hook-form';
@@ -26,23 +26,8 @@ import { AuthStackParamList } from '../../types';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
-// ─── Validation schemas ────────────────────────────────────────────────────────
-const loginSchema = z.object({
-  email: z.string().email('Geçerli bir e-posta girin'),
-  password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
-});
-
-const registerSchema = z.object({
-  email: z.string().email('Geçerli bir e-posta girin'),
-  password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
-  phone: z
-    .string()
-    .min(10, 'Geçerli bir telefon numarası girin')
-    .regex(/^\+?[0-9\s\-().]{10,}$/, 'Telefon numarası geçersiz'),
-});
-
-type LoginForm = z.infer<typeof loginSchema>;
-type RegisterForm = z.infer<typeof registerSchema>;
+type LoginForm    = { email: string; password: string };
+type RegisterForm = { email: string; password: string; phone: string };
 
 export function LoginScreen() {
   const c = useThemeColors();
@@ -53,6 +38,20 @@ export function LoginScreen() {
 
   const { login, register, isLoading, error, setError } = useAuthStore();
   const { syncFromSupabase } = useWalletStore();
+
+  // ─── i18n-aware Zod schemas ───────────────────────────────────────────────
+  const loginSchema = useMemo(() => z.object({
+    email:    z.string().email(t.auth.emailError),
+    password: z.string().min(6, t.auth.passwordError),
+  }), [t]);
+
+  const registerSchema = useMemo(() => z.object({
+    email:    z.string().email(t.auth.emailError),
+    password: z.string().min(6, t.auth.passwordError),
+    phone:    z.string()
+      .min(10, t.auth.phoneError)
+      .regex(/^\+?[0-9\s\-().]{10,}$/, t.auth.phoneInvalidError),
+  }), [t]);
 
   // ─── Google OAuth — Supabase web flow (no SHA-1 needed) ──────────────────
   const handleGoogleSignIn = async () => {
@@ -97,8 +96,8 @@ export function LoginScreen() {
       // Android: Linking listener in App.tsx handles the rest
     } catch (err: unknown) {
       haptic.error();
-      const msg = err instanceof Error ? err.message : 'Google ile giriş başarısız';
-      Alert.alert('Google Girişi Hatası', msg);
+      const msg = err instanceof Error ? err.message : t.auth.googleFailed;
+      Alert.alert(t.auth.googleError, msg);
     } finally {
       setGoogleLoading(false);
     }
@@ -124,8 +123,8 @@ export function LoginScreen() {
       haptic.success();
     } catch (err: unknown) {
       haptic.error();
-      const msg = err instanceof Error ? err.message : 'Giriş başarısız';
-      Alert.alert('Giriş Hatası', msg);
+      const msg = err instanceof Error ? err.message : t.auth.loginFailed;
+      Alert.alert(t.auth.loginError, msg);
     }
   };
 
@@ -139,8 +138,8 @@ export function LoginScreen() {
       navigation.navigate('OTPVerify', { email: data.email });
     } catch (err: unknown) {
       haptic.error();
-      const msg = err instanceof Error ? err.message : 'Kayıt başarısız';
-      Alert.alert('Kayıt Hatası', msg);
+      const msg = err instanceof Error ? err.message : t.auth.registerFailed;
+      Alert.alert(t.auth.registerError, msg);
     }
   };
 
@@ -195,8 +194,8 @@ export function LoginScreen() {
                 name="phone"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <TextField
-                    label="Telefon Numarası"
-                    placeholder="+90 555 000 00 00"
+                    label={t.auth.phone}
+                    placeholder={t.auth.phonePlaceholder}
                     keyboardType="phone-pad"
                     autoComplete="tel"
                     returnKeyType="next"
@@ -227,7 +226,7 @@ export function LoginScreen() {
               <View style={[styles.infoBox, { backgroundColor: c.primary[50] }]}>
                 <Ionicons name="shield-checkmark-outline" size={16} color={c.primary[500]} />
                 <Text style={[styles.infoText, { color: c.primary[600] }]}>
-                  Kayıt sonrası e-postanıza 6 haneli doğrulama kodu gönderilecektir.
+                  {t.auth.otpInfoText}
                 </Text>
               </View>
             </>
@@ -318,7 +317,7 @@ export function LoginScreen() {
               <Text style={styles.googleLogoText}>G</Text>
             </View>
             <Text style={[styles.googleBtnText, { color: c.neutral[800] }]}>
-              {googleLoading ? 'Bağlanıyor...' : t.auth.continueWithGoogle}
+              {googleLoading ? t.auth.connecting : t.auth.continueWithGoogle}
             </Text>
           </TouchableOpacity>
 

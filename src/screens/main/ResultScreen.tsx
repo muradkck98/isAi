@@ -187,7 +187,7 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
         >
           <Card variant="elevated" padding="lg">
             <Text style={[styles.sectionLabel, { color: c.neutral[400] }]}>
-              OLASALIK SKALASI
+              {t.result.probabilityScale}
             </Text>
 
             {/* Zone bar */}
@@ -217,9 +217,9 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
 
             {/* Zone labels */}
             <View style={styles.zoneLabels}>
-              <Text style={[styles.zoneLabelText, { color: '#10B981' }]}>Gerçek</Text>
-              <Text style={[styles.zoneLabelText, { color: '#94A3B8' }]}>Belirsiz</Text>
-              <Text style={[styles.zoneLabelText, { color: '#EF4444' }]}>AI</Text>
+              <Text style={[styles.zoneLabelText, { color: '#10B981' }]}>{t.result.zoneReal}</Text>
+              <Text style={[styles.zoneLabelText, { color: '#94A3B8' }]}>{t.result.zoneUncertain}</Text>
+              <Text style={[styles.zoneLabelText, { color: '#EF4444' }]}>{t.result.zoneAI}</Text>
             </View>
           </Card>
         </Animated.View>
@@ -231,12 +231,12 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
         >
           <Card variant="elevated" padding="lg">
             <Text style={[styles.sectionLabel, { color: c.neutral[400] }]}>
-              DAĞILIM ANALİZİ
+              {t.result.distributionAnalysis}
             </Text>
 
             {/* AI bar */}
             <BreakdownRow
-              label="AI Üretimi"
+              label={t.result.aiGenerated}
               percent={scan.aiProbability}
               barStyle={aiBarStyle}
               color={classColor}
@@ -248,7 +248,7 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
 
             {/* Human bar */}
             <BreakdownRow
-              label="Gerçek / İnsan"
+              label={t.result.realHuman}
               percent={humanProb}
               barStyle={humBarStyle}
               color="#10B981"

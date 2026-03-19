@@ -199,9 +199,16 @@ export const useAuthStore = create<AuthState>()(
 // Keeps local store in sync with Supabase session events
 // (token refresh, sign out from another device, Google OAuth callback)
 supabase.auth.onAuthStateChange((event, session) => {
-  const { setUser, setLoading } = useAuthStore.getState();
+  const { setUser, setLoading, pendingOtpEmail } = useAuthStore.getState();
 
   if (event === 'SIGNED_IN' && session?.user) {
+    // Guard: if user is in OTP verification flow (registered but not yet verified),
+    // do NOT auto-login. This happens when Supabase email confirmation is disabled
+    // and signUp fires SIGNED_IN before the OTP step is complete.
+    if (pendingOtpEmail) {
+      setLoading(false);
+      return;
+    }
     setUser({
       id: session.user.id,
       email: session.user.email ?? '',

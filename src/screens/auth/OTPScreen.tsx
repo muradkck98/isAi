@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthStackParamList } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeColors } from '../../hooks/useThemeColors';
+import { useTranslation } from '../../hooks/useTranslation';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { radius } from '../../theme/radius';
@@ -29,6 +30,7 @@ const RESEND_COOLDOWN = 60; // seconds
 export function OTPScreen({ route, navigation }: Props) {
   const { email } = route.params;
   const c = useThemeColors();
+  const { t } = useTranslation();
 
   const { verifyOtp, sendOtp, isLoading } = useAuthStore();
 
@@ -65,7 +67,7 @@ export function OTPScreen({ route, navigation }: Props) {
     async (code?: string) => {
       const token = code ?? digits.join('');
       if (token.length < OTP_LENGTH) {
-        Alert.alert('Eksik kod', `Lütfen ${OTP_LENGTH} haneli kodu girin.`);
+        Alert.alert(t.otp.incompleteCode, t.otp.enterCode.replace('{length}', String(OTP_LENGTH)));
         return;
       }
       Keyboard.dismiss();
@@ -76,8 +78,8 @@ export function OTPScreen({ route, navigation }: Props) {
         // onAuthStateChange → SIGNED_IN → RootNavigator switches to Main automatically
       } catch (err: unknown) {
         haptic.error();
-        const msg = err instanceof Error ? err.message : 'Kod doğrulanamadı';
-        Alert.alert('Hata', msg);
+        const msg = err instanceof Error ? err.message : t.otp.verifyFailed;
+        Alert.alert(t.otp.error, msg);
         // Clear digits on failure
         setDigits(Array(OTP_LENGTH).fill(''));
         setTimeout(() => inputRefs.current[0]?.focus(), 100);
@@ -130,10 +132,10 @@ export function OTPScreen({ route, navigation }: Props) {
       setCanResend(false);
       setDigits(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
-      Alert.alert('Kod gönderildi', `${email} adresinize yeni bir kod gönderildi.`);
+      Alert.alert(t.otp.codeSent, t.otp.newCodeSent.replace('{email}', email));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Kod gönderilemedi';
-      Alert.alert('Hata', msg);
+      const msg = err instanceof Error ? err.message : t.otp.sendFailed;
+      Alert.alert(t.otp.error, msg);
     }
   };
 
@@ -160,11 +162,12 @@ export function OTPScreen({ route, navigation }: Props) {
             <Ionicons name="mail-outline" size={40} color={c.primary[500]} />
           </View>
           <Text style={[styles.title, { color: c.neutral[900] }]}>
-            E-posta Doğrulama
+            {t.otp.title}
           </Text>
           <Text style={[styles.subtitle, { color: c.neutral[500] }]}>
+            {t.otp.subtitle.replace('{length}', String(OTP_LENGTH))}
+            {'\n'}
             <Text style={{ fontWeight: '600', color: c.neutral[700] }}>{maskedEmail}</Text>
-            {'\n'}adresine {OTP_LENGTH} haneli doğrulama kodu gönderdik.
           </Text>
         </Animated.View>
 
@@ -227,24 +230,24 @@ export function OTPScreen({ route, navigation }: Props) {
                 },
               ]}
             >
-              {isLoading ? 'Doğrulanıyor...' : 'Doğrula'}
+              {isLoading ? t.otp.verifying : t.otp.verify}
             </Text>
           </TouchableOpacity>
 
           {/* Resend */}
           <View style={styles.resendRow}>
             <Text style={[styles.resendText, { color: c.neutral[500] }]}>
-              Kod gelmedi mi?{' '}
+              {t.otp.noCode}
             </Text>
             {canResend ? (
               <TouchableOpacity onPress={handleResend} disabled={isLoading}>
                 <Text style={[styles.resendLink, { color: c.primary[500] }]}>
-                  Tekrar gönder
+                  {t.otp.resend}
                 </Text>
               </TouchableOpacity>
             ) : (
               <Text style={[styles.resendTimer, { color: c.neutral[400] }]}>
-                {countdown}s sonra gönder
+                {t.otp.resendIn.replace('{seconds}', String(countdown))}
               </Text>
             )}
           </View>

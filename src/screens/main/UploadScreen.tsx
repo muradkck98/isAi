@@ -36,15 +36,20 @@ interface UploadScreenProps {
 }
 
 // ─── Permission helper ────────────────────────────────────────────────────────
-function showPermissionAlert(type: 'gallery' | 'camera') {
-  const title  = type === 'gallery' ? 'Galeri İzni Gerekli' : 'Kamera İzni Gerekli';
-  const body   = type === 'gallery'
-    ? 'Görsel seçebilmek için galeri erişimine izin verin. Ayarlar → isAi → Fotoğraflar.'
-    : 'Fotoğraf çekebilmek için kamera erişimine izin verin. Ayarlar → isAi → Kamera.';
+type UploadTranslations = {
+  upload: {
+    galleryPermTitle: string; galleryPermBody: string;
+    cameraPermTitle: string;  cameraPermBody: string;
+    cancel: string;           openSettings: string;
+  };
+};
+function showPermissionAlert(type: 'gallery' | 'camera', t: UploadTranslations) {
+  const title = type === 'gallery' ? t.upload.galleryPermTitle : t.upload.cameraPermTitle;
+  const body  = type === 'gallery' ? t.upload.galleryPermBody  : t.upload.cameraPermBody;
 
   Alert.alert(title, body, [
-    { text: 'İptal', style: 'cancel' },
-    { text: 'Ayarları Aç', onPress: () => Linking.openSettings() },
+    { text: t.upload.cancel, style: 'cancel' },
+    { text: t.upload.openSettings, onPress: () => Linking.openSettings() },
   ]);
 }
 
@@ -66,7 +71,7 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
 
       if (status !== 'granted') {
         setLoading(null);
-        if (!canAskAgain) showPermissionAlert('gallery');
+        if (!canAskAgain) showPermissionAlert('gallery', t);
         return;
       }
 
@@ -84,7 +89,7 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
         onImageSelected(uri);
       }
     } catch (err) {
-      Alert.alert('Hata', 'Görsel seçilirken bir sorun oluştu. Lütfen tekrar deneyin.');
+      Alert.alert(t.upload.error, t.upload.galleryError);
     } finally {
       setLoading(null);
     }
@@ -100,7 +105,7 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
 
       if (status !== 'granted') {
         setLoading(null);
-        if (!canAskAgain) showPermissionAlert('camera');
+        if (!canAskAgain) showPermissionAlert('camera', t);
         return;
       }
 
@@ -116,7 +121,7 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
         onImageSelected(uri);
       }
     } catch (err) {
-      Alert.alert('Hata', 'Kamera açılırken bir sorun oluştu. Lütfen tekrar deneyin.');
+      Alert.alert(t.upload.error, t.upload.cameraError);
     } finally {
       setLoading(null);
     }
@@ -225,7 +230,7 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
               </View>
               <View style={styles.tokenTextContainer}>
                 <Text style={[styles.tokenText, { color: c.neutral[900] }]}>
-                  {tokens} {tokens !== 1 ? t.common.tokens : t.common.token} mevcut
+                  {t.upload.tokensAvailable.replace('{count}', String(tokens))}
                 </Text>
                 <Text style={[styles.tokenSubtext, { color: c.neutral[500] }]}>
                   {t.upload.eachScanCosts}
