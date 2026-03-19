@@ -7,6 +7,8 @@ import { z } from 'zod';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
 import { Screen } from '../../components/layout/Screen';
 import { TextField } from '../../components/ui/TextField';
 import { Button } from '../../components/ui/Button';
@@ -20,6 +22,9 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useWalletStore } from '../../store/useWalletStore';
 import { supabase } from '../../lib/supabase';
 import { haptic } from '../../utils/haptics';
+import { AuthStackParamList } from '../../types';
+
+type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
 // ─── Validation schemas ────────────────────────────────────────────────────────
 const loginSchema = z.object({
@@ -42,6 +47,7 @@ type RegisterForm = z.infer<typeof registerSchema>;
 export function LoginScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
+  const navigation = useNavigation<Nav>();
   const [isRegister, setIsRegister] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -53,10 +59,6 @@ export function LoginScreen() {
     setGoogleLoading(true);
     haptic.light();
     try {
-      // Use the app's custom scheme as redirect URL.
-      // Supabase Dashboard → Authentication → URL Configuration:
-      //   Redirect URLs → add: isai://**  and  exp://**
-      //   Site URL → change to: isai://
       const redirectUrl = Linking.createURL('auth/callback');
 
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -74,10 +76,8 @@ export function LoginScreen() {
       if (oauthError) throw oauthError;
       if (!data.url) throw new Error('Google OAuth URL alınamadı');
 
-      // Open Google sign-in in system browser.
-      // On iOS: ASWebAuthenticationSession intercepts the deep link → result.type = 'success'
-      // On Android: OS intercepts the deep link before the browser can → result.type = 'cancel'
-      //   In both cases, App.tsx's Linking.addEventListener handles exchangeCodeForSession.
+      // iOS: result.type === 'success' → exchange code directly
+      // Android: result.type === 'dismiss' → App.tsx Linking listener handles it
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         redirectUrl,
@@ -85,7 +85,6 @@ export function LoginScreen() {
       );
 
       if (result.type === 'success' && result.url) {
-        // iOS path: browser returned the callback URL directly
         const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
         if (sessionError) throw sessionError;
 
@@ -95,9 +94,7 @@ export function LoginScreen() {
         }, 500);
         haptic.success();
       }
-      // Android path: result.type === 'dismiss' or 'cancel' is expected —
-      // the Linking listener in App.tsx already handled exchangeCodeForSession.
-      // onAuthStateChange → SIGNED_IN → navigation happens automatically.
+      // Android: Linking listener in App.tsx handles the rest
     } catch (err: unknown) {
       haptic.error();
       const msg = err instanceof Error ? err.message : 'Google ile giriş başarısız';
@@ -135,8 +132,11 @@ export function LoginScreen() {
   const onRegisterSubmit = async (data: RegisterForm) => {
     setError(null);
     try {
+      // register() creates account + sends OTP, sets pendingOtpEmail
       await register(data.email, data.password, data.phone);
       haptic.success();
+      // Navigate to OTP verification screen
+      navigation.navigate('OTPVerify', { email: data.email });
     } catch (err: unknown) {
       haptic.error();
       const msg = err instanceof Error ? err.message : 'Kayıt başarısız';
@@ -227,7 +227,7 @@ export function LoginScreen() {
               <View style={[styles.infoBox, { backgroundColor: c.primary[50] }]}>
                 <Ionicons name="shield-checkmark-outline" size={16} color={c.primary[500]} />
                 <Text style={[styles.infoText, { color: c.primary[600] }]}>
-                  Her telefon numarası yalnızca bir hesap için kullanılabilir.
+                  Kayıt sonrası e-postanıza 6 haneli doğrulama kodu gönderilecektir.
                 </Text>
               </View>
             </>
@@ -300,7 +300,7 @@ export function LoginScreen() {
             <View style={[styles.dividerLine, { backgroundColor: c.neutral[200] }]} />
           </View>
 
-          {/* Google button — Supabase OAuth, no SHA-1 needed */}
+          {/* Google button */}
           <TouchableOpacity
             style={[
               styles.googleBtn,

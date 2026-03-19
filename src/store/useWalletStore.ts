@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SCAN_COST, AD_REWARD_TOKENS } from '../constants';
 import { api } from '../services/api';
+
+// No AsyncStorage persistence — wallet is always synced from Supabase on login.
+// Eliminates "NativeModule: AsyncStorage is null" errors.
 
 interface WalletState {
   tokens: number;
@@ -30,110 +31,101 @@ interface WalletState {
 }
 
 const DEFAULT_STATE = {
-  tokens: 3,
+  tokens: 0,
   totalScans: 0,
   totalPurchased: 0,
   totalEarnedFromAds: 0,
   isSyncing: false,
 };
 
-export const useWalletStore = create<WalletState>()(
-  persist(
-    (set, get) => ({
-      ...DEFAULT_STATE,
+export const useWalletStore = create<WalletState>()((set, get) => ({
+  ...DEFAULT_STATE,
 
-      hasEnoughTokens: () => get().tokens >= SCAN_COST,
+  hasEnoughTokens: () => get().tokens >= SCAN_COST,
 
-      // ── Optimistic local updates ──────────────────────────────────────────
-      deductToken: () =>
-        set((state) => ({
-          tokens: Math.max(0, state.tokens - SCAN_COST),
-          totalScans: state.totalScans + 1,
-        })),
+  // ── Optimistic local updates ──────────────────────────────────────────────
+  deductToken: () =>
+    set((state) => ({
+      tokens: Math.max(0, state.tokens - SCAN_COST),
+      totalScans: state.totalScans + 1,
+    })),
 
-      addTokensFromAd: () =>
-        set((state) => ({
-          tokens: state.tokens + AD_REWARD_TOKENS,
-          totalEarnedFromAds: state.totalEarnedFromAds + AD_REWARD_TOKENS,
-        })),
+  addTokensFromAd: () =>
+    set((state) => ({
+      tokens: state.tokens + AD_REWARD_TOKENS,
+      totalEarnedFromAds: state.totalEarnedFromAds + AD_REWARD_TOKENS,
+    })),
 
-      addTokensFromPurchase: (amount) =>
-        set((state) => ({
-          tokens: state.tokens + amount,
-          totalPurchased: state.totalPurchased + amount,
-        })),
+  addTokensFromPurchase: (amount) =>
+    set((state) => ({
+      tokens: state.tokens + amount,
+      totalPurchased: state.totalPurchased + amount,
+    })),
 
-      setTokens: (tokens) => set({ tokens }),
-      setTotalScans: (count) => set({ totalScans: count }),
+  setTokens: (tokens) => set({ tokens }),
+  setTotalScans: (count) => set({ totalScans: count }),
 
-      // ── Supabase sync ─────────────────────────────────────────────────────
-      syncFromSupabase: async (userId) => {
-        set({ isSyncing: true });
-        try {
-          const wallet = await api.wallet.getInfo(userId);
-          set({
-            tokens: wallet.tokens,
-            totalScans: wallet.totalScans,
-            totalPurchased: wallet.totalPurchased,
-            totalEarnedFromAds: wallet.totalEarnedFromAds,
-          });
-        } catch {
-          // Keep local state if sync fails (offline-first)
-        } finally {
-          set({ isSyncing: false });
-        }
-      },
-
-      deductTokenRemote: async (userId, scanId) => {
-        // Optimistic local update first
-        get().deductToken();
-        try {
-          const newTokens = await api.wallet.deductToken(userId, scanId);
-          set({ tokens: newTokens });
-        } catch {
-          // Rollback
-          set((state) => ({
-            tokens: state.tokens + SCAN_COST,
-            totalScans: state.totalScans - 1,
-          }));
-          throw new Error('Token düşme işlemi başarısız');
-        }
-      },
-
-      addAdTokensRemote: async (userId) => {
-        get().addTokensFromAd();
-        try {
-          const newTokens = await api.wallet.addAdTokens(userId, AD_REWARD_TOKENS);
-          set({ tokens: newTokens });
-        } catch {
-          // Rollback
-          set((state) => ({
-            tokens: state.tokens - AD_REWARD_TOKENS,
-            totalEarnedFromAds: state.totalEarnedFromAds - AD_REWARD_TOKENS,
-          }));
-        }
-      },
-
-      addPurchasedTokensRemote: async (userId, amount) => {
-        get().addTokensFromPurchase(amount);
-        try {
-          const newTokens = await api.wallet.addPurchasedTokens(userId, amount);
-          set({ tokens: newTokens });
-        } catch {
-          // Rollback
-          set((state) => ({
-            tokens: state.tokens - amount,
-            totalPurchased: state.totalPurchased - amount,
-          }));
-          throw new Error('Token ekleme başarısız');
-        }
-      },
-
-      reset: () => set(DEFAULT_STATE),
-    }),
-    {
-      name: 'wallet-store',
-      storage: createJSONStorage(() => AsyncStorage),
+  // ── Supabase sync ─────────────────────────────────────────────────────────
+  syncFromSupabase: async (userId) => {
+    set({ isSyncing: true });
+    try {
+      const wallet = await api.wallet.getInfo(userId);
+      set({
+        tokens: wallet.tokens,
+        totalScans: wallet.totalScans,
+        totalPurchased: wallet.totalPurchased,
+        totalEarnedFromAds: wallet.totalEarnedFromAds,
+      });
+    } catch {
+      // Keep current state if sync fails (offline-first)
+    } finally {
+      set({ isSyncing: false });
     }
-  )
-);
+  },
+
+  deductTokenRemote: async (userId, scanId) => {
+    get().deductToken();
+    try {
+      const newTokens = await api.wallet.deductToken(userId, scanId);
+      set({ tokens: newTokens });
+    } catch {
+      // Rollback optimistic update
+      set((state) => ({
+        tokens: state.tokens + SCAN_COST,
+        totalScans: state.totalScans - 1,
+      }));
+      throw new Error('Token düşme işlemi başarısız');
+    }
+  },
+
+  addAdTokensRemote: async (userId) => {
+    get().addTokensFromAd();
+    try {
+      const newTokens = await api.wallet.addAdTokens(userId, AD_REWARD_TOKENS);
+      set({ tokens: newTokens });
+    } catch {
+      // Rollback
+      set((state) => ({
+        tokens: state.tokens - AD_REWARD_TOKENS,
+        totalEarnedFromAds: state.totalEarnedFromAds - AD_REWARD_TOKENS,
+      }));
+    }
+  },
+
+  addPurchasedTokensRemote: async (userId, amount) => {
+    get().addTokensFromPurchase(amount);
+    try {
+      const newTokens = await api.wallet.addPurchasedTokens(userId, amount);
+      set({ tokens: newTokens });
+    } catch {
+      // Rollback
+      set((state) => ({
+        tokens: state.tokens - amount,
+        totalPurchased: state.totalPurchased - amount,
+      }));
+      throw new Error('Token ekleme başarısız');
+    }
+  },
+
+  reset: () => set(DEFAULT_STATE),
+}));

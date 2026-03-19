@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { api } from '../services/api';
 import { User } from '../types';
+import { zustandSecureStorage } from '../lib/storage';
 
 interface AuthState {
   user: User | null;
@@ -12,7 +12,10 @@ interface AuthState {
   hasCompletedOnboarding: boolean;
   error: string | null;
 
-  // Actions
+  /** Email waiting for OTP verification after register */
+  pendingOtpEmail: string | null;
+
+  // Setters
   setUser: (user: User | null) => void;
   setLoading: (loading: boolean) => void;
   setOnboardingCompleted: () => void;
@@ -21,6 +24,8 @@ interface AuthState {
   // Auth operations
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, phone?: string) => Promise<void>;
+  sendOtp: (email: string) => Promise<void>;
+  verifyOtp: (email: string, token: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
 
@@ -36,12 +41,14 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
       hasCompletedOnboarding: false,
       error: null,
+      pendingOtpEmail: null,
 
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setLoading: (isLoading) => set({ isLoading }),
       setOnboardingCompleted: () => set({ hasCompletedOnboarding: true }),
       setError: (error) => set({ error }),
 
+      // ─── Login ────────────────────────────────────────────────────────────
       login: async (email, password) => {
         set({ isLoading: true, error: null });
         try {
@@ -54,11 +61,18 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // ─── Register → sets pendingOtpEmail, does NOT log user in yet ────────
       register: async (email, password, phone) => {
         set({ isLoading: true, error: null });
         try {
-          const user = await api.auth.register(email, password, phone);
-          set({ user, isAuthenticated: true, isLoading: false, error: null });
+          await api.auth.register(email, password, phone);
+          // Send OTP so user can verify their email
+          const { error: otpError } = await supabase.auth.signInWithOtp({
+            email,
+            options: { shouldCreateUser: false },
+          });
+          if (otpError) throw otpError;
+          set({ isLoading: false, pendingOtpEmail: email });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Kayıt başarısız';
           set({ isLoading: false, error: message });
@@ -66,6 +80,56 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // ─── Re-send OTP (from OTP screen "Resend" button) ────────────────────
+      sendOtp: async (email) => {
+        set({ isLoading: true, error: null });
+        try {
+          const { error } = await supabase.auth.signInWithOtp({
+            email,
+            options: { shouldCreateUser: false },
+          });
+          if (error) throw error;
+          set({ pendingOtpEmail: email });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Kod gönderilemedi';
+          set({ error: message });
+          throw err;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      // ─── Verify OTP code (type = 'email' for signInWithOtp flow) ──────────
+      verifyOtp: async (email, token) => {
+        set({ isLoading: true, error: null });
+        try {
+          const { data, error } = await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: 'email',
+          });
+          if (error) throw error;
+          if (data.user) {
+            set({
+              user: {
+                id: data.user.id,
+                email: data.user.email ?? '',
+                createdAt: data.user.created_at,
+              },
+              isAuthenticated: true,
+              pendingOtpEmail: null,
+            });
+          }
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Kod doğrulanamadı';
+          set({ error: message });
+          throw err;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      // ─── Google OAuth (handled by LoginScreen + App.tsx deep link) ────────
       loginWithGoogle: async (idToken) => {
         set({ isLoading: true, error: null });
         try {
@@ -78,21 +142,28 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // ─── Logout ───────────────────────────────────────────────────────────
       logout: async () => {
         set({ isLoading: true });
         try {
           await api.auth.logout();
         } catch {
-          // Even if API call fails, clear local state
+          // Clear local state even if API fails
         } finally {
-          set({ user: null, isAuthenticated: false, isLoading: false, error: null });
+          set({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+            pendingOtpEmail: null,
+          });
         }
       },
 
+      // ─── Restore session from SecureStore on app boot ─────────────────────
       initialize: async () => {
         set({ isLoading: true });
         try {
-          // Check for existing Supabase session (stored in SecureStore)
           const session = await api.auth.getSession();
           if (session?.user) {
             set({
@@ -115,8 +186,8 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-store',
-      storage: createJSONStorage(() => AsyncStorage),
-      // Only persist onboarding state — auth session comes from SecureStore via Supabase
+      storage: zustandSecureStorage,
+      // Only persist onboarding flag — auth session comes from SecureStore via Supabase
       partialize: (state) => ({
         hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),
@@ -126,7 +197,7 @@ export const useAuthStore = create<AuthState>()(
 
 // ─── Supabase Auth State Listener ─────────────────────────────────────────────
 // Keeps local store in sync with Supabase session events
-// (e.g., token refresh, sign out from another device, OAuth callback)
+// (token refresh, sign out from another device, Google OAuth callback)
 supabase.auth.onAuthStateChange((event, session) => {
   const { setUser, setLoading } = useAuthStore.getState();
 

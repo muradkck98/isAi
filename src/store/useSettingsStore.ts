@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { persist } from 'zustand/middleware';
 import { Appearance } from 'react-native';
 import type { Language } from '../i18n';
+import { zustandSecureStorage } from '../lib/storage';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -43,7 +43,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'settings-store',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: zustandSecureStorage,
     }
   )
 );
