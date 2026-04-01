@@ -1,11 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, TextInput, Modal, Pressable } from 'react-native';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+
+// Must be called at module level so it runs as soon as the auth screen mounts
+// after Android redirects back from Chrome Custom Tab
+WebBrowser.maybeCompleteAuthSession();
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
@@ -35,6 +39,9 @@ export function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const [isRegister, setIsRegister] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const { login, register, isLoading, error, setError } = useAuthStore();
   const { syncFromSupabase } = useWalletStore();
@@ -52,6 +59,25 @@ export function LoginScreen() {
       .min(10, t.auth.phoneError)
       .regex(/^\+?[0-9\s\-().]{10,}$/, t.auth.phoneInvalidError),
   }), [t]);
+
+  // ─── Forgot password ──────────────────────────────────────────────────────
+  const handleForgotPassword = async () => {
+    const email = resetEmail.trim();
+    if (!email) return;
+    setResetLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      setShowForgotPassword(false);
+      setResetEmail('');
+      Alert.alert(t.auth.resetLinkSent, t.auth.resetLinkBody);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t.auth.resetFailed;
+      Alert.alert(t.auth.resetError, msg);
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   // ─── Google OAuth — Supabase web flow (no SHA-1 needed) ──────────────────
   const handleGoogleSignIn = async () => {
@@ -267,7 +293,7 @@ export function LoginScreen() {
                   />
                 )}
               />
-              <TouchableOpacity style={styles.forgotPassword}>
+              <TouchableOpacity style={styles.forgotPassword} onPress={() => { haptic.light(); setResetEmail(''); setShowForgotPassword(true); }}>
                 <Text style={[styles.forgotText, { color: c.primary[500] }]}>
                   {t.auth.forgotPassword}
                 </Text>
@@ -332,9 +358,52 @@ export function LoginScreen() {
           </TouchableOpacity>
         </Animated.View>
       </View>
+      {/* ─── Forgot Password Modal ─────────────────────────────────────── */}
+      <Modal visible={showForgotPassword} transparent animationType="fade" onRequestClose={() => setShowForgotPassword(false)}>
+        <Pressable style={fpStyles.overlay} onPress={() => setShowForgotPassword(false)}>
+          <Pressable style={[fpStyles.sheet, { backgroundColor: c.neutral[0] }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[fpStyles.title, { color: c.neutral[900] }]}>{t.auth.forgotPasswordTitle}</Text>
+            <Text style={[fpStyles.subtitle, { color: c.neutral[500] }]}>{t.auth.forgotPasswordSubtitle}</Text>
+            <TextInput
+              style={[fpStyles.input, { borderColor: c.neutral[200], color: c.neutral[900], backgroundColor: c.neutral[50] }]}
+              placeholder={t.auth.emailPlaceholder}
+              placeholderTextColor={c.neutral[400]}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={resetEmail}
+              onChangeText={setResetEmail}
+            />
+            <TouchableOpacity
+              style={[fpStyles.btn, { backgroundColor: c.primary[500], opacity: resetLoading ? 0.7 : 1 }]}
+              onPress={handleForgotPassword}
+              disabled={resetLoading || !resetEmail.trim()}
+              activeOpacity={0.85}
+            >
+              <Text style={[fpStyles.btnText, { color: '#FFF' }]}>
+                {resetLoading ? t.common.loading : t.auth.sendResetLink}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={fpStyles.cancel} onPress={() => setShowForgotPassword(false)}>
+              <Text style={[fpStyles.cancelText, { color: c.neutral[500] }]}>{t.common.cancel}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
+
+const fpStyles = StyleSheet.create({
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
+  sheet:      { width: '100%', borderRadius: radius['2xl'], padding: spacing['2xl'], gap: spacing.lg },
+  title:      { ...typography.h3, textAlign: 'center' },
+  subtitle:   { ...typography.bodySm, textAlign: 'center' },
+  input:      { borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, ...typography.body },
+  btn:        { borderRadius: radius.xl, paddingVertical: spacing.lg, alignItems: 'center' },
+  btnText:    { ...typography.button },
+  cancel:     { alignItems: 'center', paddingVertical: spacing.sm },
+  cancelText: { ...typography.bodySm },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', paddingVertical: spacing['3xl'] },

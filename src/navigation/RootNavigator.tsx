@@ -2,12 +2,14 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Linking from 'expo-linking';
 import { SplashScreen } from '../screens/auth/SplashScreen';
 import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
 import { AuthNavigator } from './AuthNavigator';
 import { MainNavigator } from './MainNavigator';
 import { useAuthStore } from '../store/useAuthStore';
 import { useWalletStore } from '../store/useWalletStore';
+import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,6 +35,37 @@ export function RootNavigator() {
     };
     boot();
   }, [initialize]);
+
+  // ─── Android Google OAuth deep-link handler ────────────────────────────────
+  // When Chrome Custom Tab redirects to isai://auth/callback?code=...
+  // Android fires a Linking event — we exchange the code for a Supabase session.
+  useEffect(() => {
+    const handleOAuthCallback = async (url: string) => {
+      if (!url.includes('auth/callback')) return;
+      try {
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
+        if (!error) {
+          // onAuthStateChange fires SIGNED_IN → store is updated automatically
+          const userId = useAuthStore.getState().user?.id;
+          if (userId) syncFromSupabase(userId).catch(() => {});
+        }
+      } catch {
+        // silently ignore — user stays on auth screen
+      }
+    };
+
+    // App was fully closed and opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleOAuthCallback(url);
+    });
+
+    // App was in background and brought to foreground via deep link
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleOAuthCallback(url);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   // Sync wallet whenever user logs in
   useEffect(() => {

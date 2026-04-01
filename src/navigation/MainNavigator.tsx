@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { Alert } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -17,18 +18,16 @@ import { HistoryScreen } from '../screens/main/HistoryScreen';
 import { WalletScreen } from '../screens/main/WalletScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { AnimatedTabBar } from '../components/ui/AnimatedTabBar';
-import { MainTabParamList, HomeStackParamList } from '../types';
+import { MainTabParamList, HomeStackParamList, ScanResult } from '../types';
 import { useScanStore } from '../store/useScanStore';
 import { useWalletStore } from '../store/useWalletStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { useTranslation } from '../hooks/useTranslation';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 
 // ─── Tab transition wrapper ────────────────────────────────────────────────
-// Smooth fade + subtle upward slide when a tab becomes focused.
-// opacity and transform are on SEPARATE Animated.Views to avoid the
-// Reanimated warning about layout animations overwriting animated props.
 function FadeSlideWrapper({ children }: { children: React.ReactNode }) {
   const isFocused   = useIsFocused();
   const opacity     = useSharedValue(0);
@@ -44,8 +43,6 @@ function FadeSlideWrapper({ children }: { children: React.ReactNode }) {
     }
   }, [isFocused]);
 
-  // Separate animated views: outer handles opacity, inner handles transform.
-  // This prevents Reanimated from warning about conflicting layout animations.
   const opacityStyle    = useAnimatedStyle(() => ({ flex: 1, opacity: opacity.value }));
   const translateStyle  = useAnimatedStyle(() => ({
     flex: 1,
@@ -61,11 +58,19 @@ function FadeSlideWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── Home stack (push navigation within Home tab) ─────────────────────────
+// ─── Home stack ────────────────────────────────────────────────────────────
 function HomeStackNavigator() {
   const { setCurrentScan, runScan } = useScanStore();
   const { hasEnoughTokens, deductToken, deductTokenRemote } = useWalletStore();
   const { user } = useAuthStore();
+  const { t } = useTranslation();
+
+  // Holds the in-flight scan promise so it runs PARALLEL with the ProcessingScreen animation
+  const pendingResult = useRef<Promise<ScanResult> | null>(null);
+
+  const showNoTokensAlert = () => {
+    Alert.alert(t.upload.noTokensTitle, t.upload.noTokensBody);
+  };
 
   return (
     <HomeStack.Navigator
@@ -96,9 +101,12 @@ function HomeStackNavigator() {
           <UploadScreen
             onGoBack={() => navigation.goBack()}
             onImageSelected={(uri) => {
-              if (!hasEnoughTokens()) return;
-              // Optimistic deduct locally; remote reconcile happens after scan
+              if (!hasEnoughTokens()) {
+                showNoTokensAlert();
+                return;
+              }
               deductToken();
+              pendingResult.current = runScan(uri, user?.id ?? 'anonymous', undefined);
               navigation.navigate('Processing', { imageUri: uri });
             }}
           />
@@ -113,8 +121,16 @@ function HomeStackNavigator() {
           <SocialScanScreen
             onGoBack={() => navigation.goBack()}
             onPostFetched={(thumbnailUri, socialMeta) => {
-              if (!hasEnoughTokens()) return;
+              if (!hasEnoughTokens()) {
+                showNoTokensAlert();
+                return;
+              }
               deductToken();
+              pendingResult.current = runScan(thumbnailUri, user?.id ?? 'anonymous', {
+                platform: socialMeta.platform,
+                postUrl: socialMeta.postUrl,
+                authorName: socialMeta.authorName,
+              });
               navigation.navigate('Processing', { imageUri: thumbnailUri, socialMeta });
             }}
           />
@@ -132,34 +148,34 @@ function HomeStackNavigator() {
             onComplete={async () => {
               try {
                 const userId = user?.id ?? 'anonymous';
-                const socialMeta = route.params.socialMeta;
+                const routeSocialMeta = route.params.socialMeta;
 
-                const result = await runScan(
+                const result = await (pendingResult.current ?? runScan(
                   route.params.imageUri,
                   userId,
-                  socialMeta
+                  routeSocialMeta
                     ? {
-                        platform: socialMeta.platform,
-                        postUrl: socialMeta.postUrl,
-                        authorName: socialMeta.authorName,
+                        platform: routeSocialMeta.platform,
+                        postUrl: routeSocialMeta.postUrl,
+                        authorName: routeSocialMeta.authorName,
                       }
                     : undefined
-                );
+                ));
+                pendingResult.current = null;
 
-                // Attach social metadata to result for ResultScreen display
-                const enriched = socialMeta
-                  ? { ...result, metadata: { socialMeta } }
+                const enriched = routeSocialMeta
+                  ? { ...result, metadata: { socialMeta: routeSocialMeta } }
                   : result;
 
                 setCurrentScan(enriched);
 
-                // Reconcile token deduction with server
                 if (user?.id) {
                   deductTokenRemote(user.id, result.id).catch(() => {});
                 }
 
                 navigation.replace('Result', { scanId: enriched.id });
               } catch {
+                pendingResult.current = null;
                 navigation.goBack();
               }
             }}

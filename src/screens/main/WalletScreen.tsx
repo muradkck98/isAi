@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import Animated, {
   FadeInUp,
   FadeInDown,
@@ -30,12 +30,49 @@ export function WalletScreen() {
   const { tokens, totalScans, totalPurchased, totalEarnedFromAds, addAdTokensRemote } =
     useWalletStore();
   const { user } = useAuthStore();
+  const [adLoading, setAdLoading] = useState(false);
 
-  const handleWatchAd = async () => {
-    haptic.success();
-    if (user?.id) {
-      await addAdTokensRemote(user.id);
-    }
+  const handleWatchAd = () => {
+    haptic.medium();
+    // Simulate ad playback — replace with real ad SDK call when integrated
+    Alert.alert(
+      t.wallet.watchAndEarn,
+      t.wallet.watchAdDescription,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.wallet.watchAdButton.replace(' → +1 Token', '').replace(' → +1 Jeton', '').replace(' → +1 Token', '') + ' ▶',
+          onPress: async () => {
+            setAdLoading(true);
+            try {
+              if (user?.id) {
+                await addAdTokensRemote(user.id);
+                haptic.success();
+              }
+            } finally {
+              setAdLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBuyPack = (packId: string, packName: string, tokens: number, price: number, currency: string) => {
+    haptic.medium();
+    // TODO: Replace with RevenueCat purchase flow when ready.
+    // RevenueCat setup: https://www.revenuecat.com/docs/getting-started/installation/expo
+    // Steps:
+    //   1. npm install react-native-purchases
+    //   2. Configure products in App Store Connect (iOS) and Google Play Console (Android)
+    //   3. Link product IDs to RevenueCat offerings
+    //   4. Call Purchases.purchaseStoreProduct(product) here
+    //   5. On success: await addPurchasedTokensRemote(user.id, tokens)
+    Alert.alert(
+      t.profile.comingSoon,
+      `${packName} — ${tokens} tokens\n\n${t.profile.comingSoonBody}`,
+      [{ text: t.common.done }]
+    );
   };
 
   return (
@@ -84,12 +121,16 @@ export function WalletScreen() {
               </View>
               <Text style={styles.adEmoji}>🎬</Text>
             </View>
-            <Button
-              title={t.wallet.watchAdButton}
-              onPress={handleWatchAd}
-              variant="secondary"
-              size="md"
-            />
+            {adLoading ? (
+              <ActivityIndicator color={c.primary[500]} style={{ paddingVertical: spacing.md }} />
+            ) : (
+              <Button
+                title={t.wallet.watchAdButton}
+                onPress={handleWatchAd}
+                variant="secondary"
+                size="md"
+              />
+            )}
           </Card>
         </Animated.View>
 
@@ -108,7 +149,7 @@ export function WalletScreen() {
               currency={pack.currency}
               popular={pack.popular}
               delay={400 + index * 100}
-              onPress={() => haptic.medium()}
+              onPress={() => handleBuyPack(pack.id, pack.name, pack.tokens, pack.price, pack.currency)}
             />
           ))}
         </Animated.View>

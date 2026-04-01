@@ -4,23 +4,35 @@
     "slug": "isAi",
     "scheme": "isai",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0F172A"
     },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.isai.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "isAi fotoğraflarınıza erişerek AI görsel tespiti yapar.",
         "NSPhotoLibraryAddUsageDescription": "isAi analiz sonuçlarını fotoğraf kitaplığınıza kaydedebilir.",
         "NSCameraUsageDescription": "isAi kameranızı kullanarak çektiğiniz fotoğraflarda AI tespiti yapar.",
         "NSMicrophoneUsageDescription": "isAi video çekimi sırasında mikrofon erişimi gerektirebilir.",
-        "NSFaceIDUsageDescription": "isAi hesabınızı güvenli şekilde korumak için Face ID kullanabilir."
+        "NSFaceIDUsageDescription": "isAi hesabınızı güvenli şekilde korumak için Face ID kullanabilir.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -31,6 +43,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.isai.app",
+      "versionCode": 1,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -41,7 +54,10 @@
               "host": "*"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -72,6 +88,12 @@
       ],
       "expo-secure-store",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00c54dc4-e986-4e01-bee1-c12c62b46f04"
+      }
+    },
+    "owner": "mrdkck"
   }
 }

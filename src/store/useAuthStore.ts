@@ -55,7 +55,7 @@ export const useAuthStore = create<AuthState>()(
           const user = await api.auth.login(email, password);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Giriş başarısız';
+          const message = err instanceof Error ? err.message : 'Login failed';
           set({ isLoading: false, error: message });
           throw err;
         }
@@ -74,7 +74,7 @@ export const useAuthStore = create<AuthState>()(
           if (otpError) throw otpError;
           set({ isLoading: false, pendingOtpEmail: email });
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Kayıt başarısız';
+          const message = err instanceof Error ? err.message : 'Registration failed';
           set({ isLoading: false, error: message });
           throw err;
         }
@@ -91,7 +91,7 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
           set({ pendingOtpEmail: email });
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Kod gönderilemedi';
+          const message = err instanceof Error ? err.message : 'Failed to send code';
           set({ error: message });
           throw err;
         } finally {
@@ -121,7 +121,7 @@ export const useAuthStore = create<AuthState>()(
             });
           }
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Kod doğrulanamadı';
+          const message = err instanceof Error ? err.message : 'Code verification failed';
           set({ error: message });
           throw err;
         } finally {
@@ -136,7 +136,7 @@ export const useAuthStore = create<AuthState>()(
           const user = await api.auth.loginWithGoogle(idToken);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Google ile giriş başarısız';
+          const message = err instanceof Error ? err.message : 'Google sign-in failed';
           set({ isLoading: false, error: message });
           throw err;
         }

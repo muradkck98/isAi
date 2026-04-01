@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Modal, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Modal, Pressable, ScrollView, Alert, Linking, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +27,7 @@ export function ProfileScreen() {
   const { language, themeMode, setLanguage, setThemeMode } = useSettingsStore();
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const insets = useSafeAreaInsets();
 
   const handleLogout = async () => {
@@ -35,6 +36,36 @@ export function ProfileScreen() {
     // Clear all user-specific local data
     resetWallet();
     resetScans();
+  };
+
+  const handleRateApp = () => {
+    haptic.selection();
+    Alert.alert(t.profile.rateTitle, t.profile.rateBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.profile.rateApp,
+        onPress: () => {
+          // TODO: Replace with your real App Store / Google Play URLs after publishing
+        const url = Platform.OS === 'ios'
+            ? 'https://apps.apple.com/app/id0000000000'  // Replace id0000000000 with your real App Store ID
+            : 'https://play.google.com/store/apps/details?id=com.isai.app';
+          Linking.openURL(url).catch(() => {});
+        },
+      },
+    ]);
+  };
+
+  const handleFeedback = () => {
+    haptic.selection();
+    const subject = encodeURIComponent(t.profile.feedbackSubject);
+    Linking.openURL(`mailto:support@isai.app?subject=${subject}`).catch(() => {
+      Alert.alert(t.empty.somethingWrong, t.empty.tryAgainLater);
+    });
+  };
+
+  const handleComingSoon = () => {
+    haptic.selection();
+    Alert.alert(t.profile.comingSoon, t.profile.comingSoonBody);
   };
 
   const themeLabel = themeMode === 'light' ? t.profile.lightMode : themeMode === 'dark' ? t.profile.darkMode : t.profile.systemMode;
@@ -78,11 +109,11 @@ export function ProfileScreen() {
         <Animated.View entering={FadeInUp.delay(300).duration(500)} style={[styles.menu, { backgroundColor: c.neutral[0] }]}>
           <MenuItem emoji="🌐" title={t.profile.language} value={currentLangLabel} onPress={() => { haptic.selection(); setShowLanguagePicker(true); }} c={c} />
           <MenuItem emoji="🎨" title={t.profile.appearance} value={themeLabel} onPress={() => { haptic.selection(); setShowThemePicker(true); }} c={c} />
-          <MenuItem emoji="🔔" title={t.profile.notifications} onPress={() => haptic.selection()} c={c} />
-          <MenuItem emoji="🔒" title={t.profile.privacy} onPress={() => haptic.selection()} c={c} />
-          <MenuItem emoji="📖" title={t.profile.about} onPress={() => haptic.selection()} c={c} />
-          <MenuItem emoji="💬" title={t.profile.feedback} onPress={() => haptic.selection()} c={c} />
-          <MenuItem emoji="⭐" title={t.profile.rateApp} onPress={() => haptic.selection()} c={c} isLast />
+          <MenuItem emoji="🔔" title={t.profile.notifications} onPress={handleComingSoon} c={c} />
+          <MenuItem emoji="🔒" title={t.profile.privacy} onPress={handleComingSoon} c={c} />
+          <MenuItem emoji="📖" title={t.profile.about} onPress={() => { haptic.selection(); setShowAbout(true); }} c={c} />
+          <MenuItem emoji="💬" title={t.profile.feedback} onPress={handleFeedback} c={c} />
+          <MenuItem emoji="⭐" title={t.profile.rateApp} onPress={handleRateApp} c={c} isLast />
         </Animated.View>
 
         {/* Logout */}
@@ -111,6 +142,23 @@ export function ProfileScreen() {
             onPress={() => { haptic.selection(); setThemeMode(option.mode); setShowThemePicker(false); }} c={c} />
         ))}
       </PickerModal>
+
+      {/* About Modal */}
+      <Modal visible={showAbout} transparent animationType="slide" onRequestClose={() => setShowAbout(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAbout(false)}>
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: c.neutral[0], paddingBottom: Math.max(spacing.xl, insets.bottom + spacing.md) }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={[styles.modalHandle, { backgroundColor: c.neutral[200] }]} />
+            <Text style={[styles.modalTitle, { color: c.neutral[900] }]}>{t.profile.aboutTitle}</Text>
+            <Text style={[styles.aboutBody, { color: c.neutral[600] }]}>{t.profile.aboutBody}</Text>
+            <TouchableOpacity onPress={() => setShowAbout(false)} style={[styles.modalCancel, { backgroundColor: c.neutral[100] }]}>
+              <Text style={[styles.modalCancelText, { color: c.neutral[600] }]}>{t.common.done}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -192,4 +240,5 @@ const styles = StyleSheet.create({
   pickerOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.lg, paddingHorizontal: spacing.lg, borderRadius: radius.lg, marginBottom: spacing.xs },
   pickerOptionText: { ...typography.body, fontSize: 16 },
   checkmark: { fontSize: 18, fontWeight: '700' },
+  aboutBody: { ...typography.body, lineHeight: 22, marginBottom: spacing.lg },
 });

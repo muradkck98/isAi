@@ -1,7 +1,7 @@
 // ─── API Service — Supabase Integration ──────────────────────────────────────
 // Auth   → Supabase Auth (email/password + Google OAuth)
 // DB     → Supabase PostgreSQL (wallets, scans tables)
-// AI     → Mock for now; swap AI_API.BASE_URL in env.ts when ready
+// AI     → Sightengine via Supabase Edge Function (API key stays server-side)
 
 import { supabase } from '../lib/supabase';
 import { ScanResult, User, WalletInfo } from '../types';
@@ -17,19 +17,37 @@ function mapUser(supabaseUser: { id: string; email?: string; created_at: string 
   };
 }
 
-/** Mock AI detection — replace with real call once API key is ready */
+/**
+ * AI Detection via Supabase Edge Function → Sightengine
+ *
+ * Flow: mobile → supabase.functions.invoke('detect-ai') → Sightengine API
+ * API keys never leave the server.
+ *
+ * Deploy Edge Function:
+ *   supabase functions deploy detect-ai
+ *   supabase secrets set SIGHTENGINE_API_USER=xxx SIGHTENGINE_API_SECRET=yyy
+ *
+ * Falls back to mock if Edge Function returns an error (dev/staging safety net).
+ */
 async function callAIDetection(imageUri: string): Promise<{ probability: number }> {
-  // TODO: replace with real AI endpoint
-  // const response = await fetch(`${AI_API.BASE_URL}/detect`, {
-  //   method: 'POST',
-  //   headers: { Authorization: `Bearer ${AI_API.KEY}`, 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ image_url: imageUri }),
-  // });
-  // const data = await response.json();
-  // return { probability: data.ai_probability };
+  try {
+    const { data, error } = await supabase.functions.invoke('detect-ai', {
+      body: { image_url: imageUri },
+    });
 
-  await new Promise((r) => setTimeout(r, 2500));
-  return { probability: Math.round(Math.random() * 100 * 10) / 10 };
+    if (error) throw new Error(error.message);
+    if (typeof data?.probability !== 'number') throw new Error('Invalid response from detect-ai');
+
+    return { probability: data.probability };
+  } catch (err) {
+    // Dev fallback: if Edge Function not deployed yet, use mock
+    if (__DEV__) {
+      console.warn('[AI Detection] Edge Function unavailable, using mock:', err);
+      await new Promise((r) => setTimeout(r, 1500));
+      return { probability: Math.round(Math.random() * 100 * 10) / 10 };
+    }
+    throw err;
+  }
 }
 
 function classifyProbability(p: number): ScanResult['classification'] {
@@ -54,7 +72,7 @@ export const api = {
     login: async (email: string, password: string): Promise<User> => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
-      if (!data.user) throw new Error('Kullanıcı bulunamadı');
+      if (!data.user) throw new Error('User not found');
       return mapUser(data.user);
     },
 
@@ -63,13 +81,13 @@ export const api = {
       // 1. Check phone uniqueness before creating account
       if (phone) {
         const { data: taken } = await supabase.rpc('is_phone_taken', { p_phone: phone });
-        if (taken) throw new Error('Bu telefon numarası zaten kayıtlı');
+        if (taken) throw new Error('This phone number is already registered');
       }
 
       // 2. Create auth account (trigger auto-creates wallet + profile)
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw new Error(error.message);
-      if (!data.user) throw new Error('Kayıt başarısız');
+      if (!data.user) throw new Error('Registration failed');
 
       // 3. Save phone to profile
       if (phone) {
@@ -88,7 +106,7 @@ export const api = {
         token: idToken,
       });
       if (error) throw new Error(error.message);
-      if (!data.user) throw new Error('Google ile giriş başarısız');
+      if (!data.user) throw new Error('Google sign-in failed');
 
       // Upsert profile with google provider (wallet created by trigger)
       await supabase
@@ -120,24 +138,60 @@ export const api = {
   // ─── Scan ──────────────────────────────────────────────────────────────────
 
   scan: {
+    /**
+     * Upload image to Supabase Storage and return a public URL.
+     * Sightengine requires a publicly accessible URL — local file:// URIs don't work.
+     * Social scan URLs (https://) are passed through directly.
+     */
+    uploadImage: async (imageUri: string, userId: string): Promise<string> => {
+      // Social/web URLs are already public — no upload needed
+      if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+        return imageUri;
+      }
+
+      // Local file → upload to Supabase Storage
+      const filename = `${userId}/${Date.now()}.jpg`;
+
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      const { error } = await supabase.storage
+        .from('scan-images')
+        .upload(filename, blob, {
+          contentType: 'image/jpeg',
+          upsert: false,
+        });
+
+      if (error) throw new Error(`Storage upload failed: ${error.message}`);
+
+      const { data: urlData } = supabase.storage
+        .from('scan-images')
+        .getPublicUrl(filename);
+
+      return urlData.publicUrl;
+    },
+
     /** Run AI detection and save result to Supabase */
     analyze: async (
       imageUri: string,
       userId: string,
       socialMeta?: { platform?: string; postUrl?: string; authorName?: string | null }
     ): Promise<ScanResult> => {
-      // 1. Run AI detection
-      const { probability } = await callAIDetection(imageUri);
+      // 1. Upload image to get a public URL (required by Sightengine)
+      const publicImageUrl = await api.scan.uploadImage(imageUri, userId);
+
+      // 2. Run AI detection via Edge Function → Sightengine
+      const { probability } = await callAIDetection(publicImageUrl);
 
       const classification = classifyProbability(probability);
       const confidenceLevel = confidenceFromProbability(probability);
 
-      // 2. Persist scan to Supabase
+      // 3. Persist scan to Supabase
       const { data, error } = await supabase
         .from('scans')
         .insert({
           user_id: userId,
-          image_url: imageUri,
+          image_url: publicImageUrl,
           ai_probability: probability,
           classification,
           confidence_level: confidenceLevel,

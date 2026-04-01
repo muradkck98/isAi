@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, Modal, Pressable } from 'react-native';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
+import { useNavigation } from '@react-navigation/native';
 import { Screen } from '../../components/layout/Screen';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonList } from '../../components/ui/Skeleton';
@@ -22,6 +23,8 @@ export function HistoryScreen() {
   const { t } = useTranslation();
   const { scanHistory, isLoadingHistory, fetchHistory } = useScanStore();
   const { user } = useAuthStore();
+  const navigation = useNavigation<any>();
+  const [selectedScan, setSelectedScan] = useState<ScanResult | null>(null);
 
   // Fetch from Supabase on mount (falls back to local cache if offline)
   useEffect(() => {
@@ -51,7 +54,7 @@ export function HistoryScreen() {
             title={t.history.noScansTitle}
             description={t.history.noScansDescription}
             actionLabel={t.history.startScanning}
-            onAction={() => haptic.light()}
+            onAction={() => { haptic.light(); navigation.navigate('Home'); }}
           />
         </View>
       </Screen>
@@ -71,7 +74,7 @@ export function HistoryScreen() {
           entering={FadeInUp.delay(100).duration(400)}
           style={[styles.subtitle, { color: c.neutral[500] }]}
         >
-          {scanHistory.length} {t.common.scans} total
+          {t.history.totalScans.replace('{count}', String(scanHistory.length))}
         </Animated.Text>
 
         <View style={styles.list}>
@@ -80,15 +83,22 @@ export function HistoryScreen() {
               key={scan.id}
               scan={scan}
               delay={200 + index * 80}
+              onPress={() => { haptic.selection(); setSelectedScan(scan); }}
             />
           ))}
         </View>
       </View>
+
+      {/* Scan Detail Modal */}
+      <ScanDetailModal
+        scan={selectedScan}
+        onClose={() => setSelectedScan(null)}
+      />
     </Screen>
   );
 }
 
-function HistoryItem({ scan, delay }: { scan: ScanResult; delay: number }) {
+function HistoryItem({ scan, delay, onPress }: { scan: ScanResult; delay: number; onPress: () => void }) {
   const c = useThemeColors();
   const { t } = useTranslation();
   const classColor = CLASSIFICATION_COLORS[scan.classification];
@@ -96,7 +106,7 @@ function HistoryItem({ scan, delay }: { scan: ScanResult; delay: number }) {
 
   return (
     <Animated.View entering={FadeInRight.delay(delay).duration(400).springify()}>
-      <TouchableOpacity activeOpacity={0.95} onPress={() => haptic.selection()}>
+      <TouchableOpacity activeOpacity={0.95} onPress={onPress}>
         <View style={[styles.historyCard, shadows.sm, { backgroundColor: c.neutral[0] }]}>
           <View style={styles.historyLeft}>
             <View style={[styles.historyImagePlaceholder, { backgroundColor: c.neutral[100] }]}>
@@ -124,7 +134,7 @@ function HistoryItem({ scan, delay }: { scan: ScanResult; delay: number }) {
                 </Text>
               </View>
               <Text style={[styles.historyConfidence, { color: c.neutral[400] }]}>
-                {scan.confidenceLevel} {t.history.confidence}
+                {t.history.confidence.replace('{level}', scan.confidenceLevel === 'high' ? t.result.high : scan.confidenceLevel === 'medium' ? t.result.medium : t.result.low)}
               </Text>
             </View>
           </View>
@@ -134,6 +144,73 @@ function HistoryItem({ scan, delay }: { scan: ScanResult; delay: number }) {
     </Animated.View>
   );
 }
+
+function ScanDetailModal({ scan, onClose }: { scan: ScanResult | null; onClose: () => void }) {
+  const c = useThemeColors();
+  const { t } = useTranslation();
+  if (!scan) return null;
+  const classColor = CLASSIFICATION_COLORS[scan.classification];
+  const classLabel = t.classifications[scan.classification];
+  const confLabel = scan.confidenceLevel === 'high' ? t.result.high : scan.confidenceLevel === 'medium' ? t.result.medium : t.result.low;
+
+  return (
+    <Modal visible={!!scan} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={detailStyles.overlay} onPress={onClose}>
+        <Pressable style={[detailStyles.sheet, { backgroundColor: c.neutral[0] }]} onPress={(e) => e.stopPropagation()}>
+          <View style={[detailStyles.handle, { backgroundColor: c.neutral[200] }]} />
+
+          <Text style={[detailStyles.title, { color: c.neutral[900] }]}>
+            {classLabel}
+          </Text>
+          <Text style={[detailStyles.date, { color: c.neutral[400] }]}>
+            {formatDate(scan.createdAt)}
+          </Text>
+
+          <View style={[detailStyles.probBox, { backgroundColor: classColor + '15' }]}>
+            <Text style={[detailStyles.probValue, { color: classColor }]}>
+              {formatPercentage(scan.aiProbability)}
+            </Text>
+            <Text style={[detailStyles.probLabel, { color: classColor }]}>
+              {t.result.aiProbability}
+            </Text>
+          </View>
+
+          <View style={detailStyles.row}>
+            <View style={[detailStyles.infoBox, { backgroundColor: c.neutral[50] }]}>
+              <Text style={[detailStyles.infoLabel, { color: c.neutral[500] }]}>{t.result.classification}</Text>
+              <Text style={[detailStyles.infoValue, { color: c.neutral[900] }]}>{classLabel}</Text>
+            </View>
+            <View style={[detailStyles.infoBox, { backgroundColor: c.neutral[50] }]}>
+              <Text style={[detailStyles.infoLabel, { color: c.neutral[500] }]}>{t.result.confidence}</Text>
+              <Text style={[detailStyles.infoValue, { color: c.neutral[900] }]}>{confLabel}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity onPress={onClose} style={[detailStyles.closeBtn, { backgroundColor: c.neutral[100] }]}>
+            <Text style={[detailStyles.closeBtnText, { color: c.neutral[700] }]}>{t.common.done}</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const detailStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: radius['3xl'], borderTopRightRadius: radius['3xl'], padding: spacing.xl, paddingTop: spacing.lg },
+  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.lg },
+  title: { ...typography.h3, textAlign: 'center', marginBottom: spacing.xs },
+  date: { ...typography.caption, textAlign: 'center', marginBottom: spacing.xl },
+  probBox: { borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', marginBottom: spacing.lg },
+  probValue: { fontSize: 48, fontWeight: '800' },
+  probLabel: { ...typography.bodySm, marginTop: spacing.xs },
+  row: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
+  infoBox: { flex: 1, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center' },
+  infoLabel: { ...typography.caption, marginBottom: spacing.xs },
+  infoValue: { ...typography.bodyMedium },
+  closeBtn: { paddingVertical: spacing.md, borderRadius: radius.lg, alignItems: 'center' },
+  closeBtnText: { ...typography.bodyMedium },
+});
 
 const styles = StyleSheet.create({
   container: {
