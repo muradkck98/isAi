@@ -5,6 +5,7 @@ import type { Language } from '../i18n';
 import { zustandSecureStorage } from '../lib/storage';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+// Language type is now imported from i18n to keep in sync with 13 supported languages
 
 interface SettingsState {
   language: Language;

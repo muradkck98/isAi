@@ -69,7 +69,8 @@ export function ProfileScreen() {
   };
 
   const themeLabel = themeMode === 'light' ? t.profile.lightMode : themeMode === 'dark' ? t.profile.darkMode : t.profile.systemMode;
-  const currentLangLabel = LANGUAGE_OPTIONS.find((l) => l.code === language)?.label ?? 'English';
+  const currentLangOpt = LANGUAGE_OPTIONS.find((l) => l.code === language);
+  const currentLangLabel = currentLangOpt ? `${currentLangOpt.flag} ${currentLangOpt.nativeLabel}` : '🇺🇸 English';
 
   return (
     <Screen scrollable inTabNavigator backgroundColor={c.background.secondary}>
@@ -126,7 +127,7 @@ export function ProfileScreen() {
       {/* Language Picker Modal */}
       <PickerModal visible={showLanguagePicker} onClose={() => setShowLanguagePicker(false)} title={t.profile.language} cancelLabel={t.common.cancel} c={c} bottomInset={insets.bottom}>
         {LANGUAGE_OPTIONS.map((lang) => (
-          <PickerOption key={lang.code} label={`${lang.flag}  ${lang.label}`} selected={language === lang.code}
+          <PickerOption key={lang.code} label={`${lang.flag}  ${lang.nativeLabel}`} selected={language === lang.code}
             onPress={() => { haptic.selection(); setLanguage(lang.code); setShowLanguagePicker(false); }} c={c} />
         ))}
       </PickerModal>

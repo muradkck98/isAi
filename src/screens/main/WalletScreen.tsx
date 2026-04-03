@@ -23,6 +23,9 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { TOKEN_PACKS } from '../../constants';
 import { haptic } from '../../utils/haptics';
 import { formatPrice } from '../../utils/format';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { HomeStackParamList } from '../../types';
 
 export function WalletScreen() {
   const c = useThemeColors();
@@ -31,6 +34,7 @@ export function WalletScreen() {
     useWalletStore();
   const { user } = useAuthStore();
   const [adLoading, setAdLoading] = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   const handleWatchAd = () => {
     haptic.medium();
@@ -58,21 +62,14 @@ export function WalletScreen() {
     );
   };
 
-  const handleBuyPack = (packId: string, packName: string, tokens: number, price: number, currency: string) => {
+  const handleBuyPack = () => {
     haptic.medium();
-    // TODO: Replace with RevenueCat purchase flow when ready.
-    // RevenueCat setup: https://www.revenuecat.com/docs/getting-started/installation/expo
-    // Steps:
-    //   1. npm install react-native-purchases
-    //   2. Configure products in App Store Connect (iOS) and Google Play Console (Android)
-    //   3. Link product IDs to RevenueCat offerings
-    //   4. Call Purchases.purchaseStoreProduct(product) here
-    //   5. On success: await addPurchasedTokensRemote(user.id, tokens)
-    Alert.alert(
-      t.profile.comingSoon,
-      `${packName} — ${tokens} tokens\n\n${t.profile.comingSoonBody}`,
-      [{ text: t.common.done }]
-    );
+    try {
+      navigation.navigate('Paywall');
+    } catch {
+      // If navigation is unavailable (tab context), show alert
+      Alert.alert(t.profile.comingSoon, t.profile.comingSoonBody, [{ text: t.common.done }]);
+    }
   };
 
   return (
@@ -149,7 +146,7 @@ export function WalletScreen() {
               currency={pack.currency}
               popular={pack.popular}
               delay={400 + index * 100}
-              onPress={() => handleBuyPack(pack.id, pack.name, pack.tokens, pack.price, pack.currency)}
+              onPress={handleBuyPack}
             />
           ))}
         </Animated.View>

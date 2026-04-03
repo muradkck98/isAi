@@ -18,6 +18,7 @@ import { HistoryScreen } from '../screens/main/HistoryScreen';
 import { WalletScreen } from '../screens/main/WalletScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { AnimatedTabBar } from '../components/ui/AnimatedTabBar';
+import { PaywallScreen } from '../screens/main/PaywallScreen';
 import { MainTabParamList, HomeStackParamList, ScanResult } from '../types';
 import { useScanStore } from '../store/useScanStore';
 import { useWalletStore } from '../store/useWalletStore';
@@ -194,6 +195,22 @@ function HomeStackNavigator() {
               navigation.popToTop();
               navigation.navigate('Upload');
             }}
+          />
+        )}
+      </HomeStack.Screen>
+
+      <HomeStack.Screen
+        name="Paywall"
+        options={{
+          animation: 'slide_from_bottom',
+          animationDuration: 400,
+          gestureEnabled: true,
+        }}
+      >
+        {({ navigation }) => (
+          <PaywallScreen
+            onClose={() => navigation.goBack()}
+            onPurchase={() => navigation.goBack()}
           />
         )}
       </HomeStack.Screen>

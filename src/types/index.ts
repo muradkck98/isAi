@@ -82,4 +82,5 @@ export type HomeStackParamList = {
     socialMeta?: SocialPostMeta;
   };
   Result: { scanId: string };
+  Paywall: undefined;
 };
