@@ -26,6 +26,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useWalletStore } from '../../store/useWalletStore';
 import { supabase } from '../../lib/supabase';
 import { haptic } from '../../utils/haptics';
+import { monitoring, Events } from '../../lib/monitoring';
 import { AuthStackParamList } from '../../types';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -79,10 +80,11 @@ export function LoginScreen() {
     }
   };
 
-  // ─── Google OAuth — Supabase web flow (no SHA-1 needed) ──────────────────
+  // ─── Google OAuth — Supabase web flow ────────────────────────────────────
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     haptic.light();
+    monitoring.track(Events.GOOGLE_LOGIN_START);
     try {
       const redirectUrl = Linking.createURL('auth/callback');
 
@@ -92,8 +94,7 @@ export function LoginScreen() {
           redirectTo: redirectUrl,
           skipBrowserRedirect: true,
           queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account',
           },
         },
       });
@@ -101,25 +102,50 @@ export function LoginScreen() {
       if (oauthError) throw oauthError;
       if (!data.url) throw new Error('Google OAuth URL alınamadı');
 
-      // iOS: result.type === 'success' → exchange code directly
-      // Android: result.type === 'dismiss' → App.tsx Linking listener handles it
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         redirectUrl,
-        { showInRecents: true }
+        { showInRecents: true, preferEphemeralSession: false }
       );
 
       if (result.type === 'success' && result.url) {
-        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
-        if (sessionError) throw sessionError;
+        // Implicit flow: tokens come back in URL fragment (#access_token=...)
+        const raw = result.url;
+        const hashIndex = raw.indexOf('#');
+        const queryIndex = raw.indexOf('?');
+        let paramStr = '';
+        if (hashIndex !== -1) {
+          paramStr = raw.slice(hashIndex + 1);
+        } else if (queryIndex !== -1) {
+          paramStr = raw.slice(queryIndex + 1);
+        }
+
+        const params = new URLSearchParams(paramStr);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) throw sessionError;
+          monitoring.track(Events.GOOGLE_LOGIN_SUCCESS);
+        } else {
+          // Fallback: try code exchange (shouldn't happen with implicit flow)
+          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
+          if (sessionError) throw sessionError;
+        }
 
         setTimeout(() => {
           const userId = useAuthStore.getState().user?.id;
-          if (userId) syncFromSupabase(userId).catch(() => {});
+          if (userId) {
+            monitoring.identify(userId);
+            syncFromSupabase(userId).catch(() => {});
+          }
         }, 500);
         haptic.success();
       }
-      // Android: Linking listener in App.tsx handles the rest
     } catch (err: unknown) {
       haptic.error();
       const msg = err instanceof Error ? err.message : t.auth.googleFailed;
@@ -330,8 +356,8 @@ export function LoginScreen() {
             style={[
               styles.googleBtn,
               {
-                borderColor: c.neutral[200],
-                backgroundColor: c.neutral[0],
+                borderColor: c.neutral[300],
+                backgroundColor: c.neutral[50],
                 opacity: anyLoading ? 0.6 : 1,
               },
             ]}
@@ -339,10 +365,8 @@ export function LoginScreen() {
             disabled={anyLoading}
             activeOpacity={0.8}
           >
-            <View style={styles.googleLogo}>
-              <Text style={styles.googleLogoText}>G</Text>
-            </View>
-            <Text style={[styles.googleBtnText, { color: c.neutral[800] }]}>
+            <GoogleIcon size={20} />
+            <Text style={[styles.googleBtnText, { color: c.neutral[700] }]}>
               {googleLoading ? t.auth.connecting : t.auth.continueWithGoogle}
             </Text>
           </TouchableOpacity>
@@ -390,6 +414,23 @@ export function LoginScreen() {
         </Pressable>
       </Modal>
     </Screen>
+  );
+}
+
+function GoogleIcon({ size = 22 }: { size?: number }) {
+  return (
+    <View style={{
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      backgroundColor: '#fff',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: '#E8EAED',
+    }}>
+      <Text style={{ fontSize: size * 0.65, fontWeight: '700', color: '#4285F4', includeFontPadding: false, textAlignVertical: 'center' }}>G</Text>
+    </View>
   );
 }
 

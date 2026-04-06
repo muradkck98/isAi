@@ -22,7 +22,8 @@ export const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
     storage: ExpoSecureStoreAdapter,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false, // Required for React Native (no URL scheme handling here)
+    detectSessionInUrl: false,
+    flowType: 'implicit', // PKCE causes code_verifier loss on Android Chrome Custom Tab
   },
 });
 

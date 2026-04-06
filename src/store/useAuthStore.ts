@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { api } from '../services/api';
 import { User } from '../types';
 import { zustandSecureStorage } from '../lib/storage';
+import { monitoring, Events } from '../lib/monitoring';
 
 interface AuthState {
   user: User | null;
@@ -54,9 +55,12 @@ export const useAuthStore = create<AuthState>()(
         try {
           const user = await api.auth.login(email, password);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
+          monitoring.identify(user.id);
+          monitoring.track(Events.LOGIN_SUCCESS, { method: 'email' });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Login failed';
           set({ isLoading: false, error: message });
+          monitoring.track(Events.LOGIN_FAILED, { error: message });
           throw err;
         }
       },
@@ -146,6 +150,8 @@ export const useAuthStore = create<AuthState>()(
       logout: async () => {
         set({ isLoading: true });
         try {
+          monitoring.track(Events.LOGOUT);
+          monitoring.reset();
           await api.auth.logout();
         } catch {
           // Clear local state even if API fails
