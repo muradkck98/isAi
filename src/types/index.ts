@@ -65,6 +65,7 @@ export type RootStackParamList = {
 
 export type AuthStackParamList = {
   Login: undefined;
+  Register: undefined;
   OTPVerify: { email: string };
 };
 

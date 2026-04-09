@@ -200,15 +200,11 @@ export const useAuthStore = create<AuthState>()(
 
       // ─── Restore session from SecureStore on app boot ─────────────────────
       initialize: async () => {
-        // Skip if already authenticated (e.g. onAuthStateChange already ran)
-        if (get().isAuthenticated) {
-          set({ isLoading: false });
-          return;
-        }
         set({ isLoading: true });
         try {
           const session = await api.auth.getSession();
-          if (session?.user) {
+          // Only set user if not mid-OTP-registration
+          if (session?.user && !get().pendingOtpEmail) {
             const user: User = {
               id: session.user.id,
               email: session.user.email ?? '',
@@ -217,7 +213,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user, isAuthenticated: true });
             monitoring.identify(user.id);
             identifyPurchaseUser(user.id);
-          } else {
+          } else if (!session) {
             set({ user: null, isAuthenticated: false });
           }
         } catch {
@@ -244,37 +240,46 @@ export const useAuthStore = create<AuthState>()(
 supabase.auth.onAuthStateChange((event, session) => {
   const store = useAuthStore.getState();
 
+  // SIGNED_IN fires for many reasons: OTP verify, magic link, token refresh, Google OAuth.
+  // We must NOT auto-login if the user is mid-registration (pendingOtpEmail set).
+  // We also must NOT auto-login for INITIAL_SESSION — that is handled by initialize().
   if (event === 'SIGNED_IN' && session?.user) {
-    // Guard: if user is in OTP flow, do NOT auto-login yet.
-    // This prevents signUp's SIGNED_IN event from bypassing OTP verification.
+    // Block auto-login during OTP registration flow
     if (store.pendingOtpEmail) {
       store.setLoading(false);
       return;
     }
-
+    // Block if verifyOtp already set the user (avoid double set)
+    if (store.isAuthenticated) {
+      store.setLoading(false);
+      return;
+    }
     const user: User = {
       id: session.user.id,
       email: session.user.email ?? '',
       createdAt: session.user.created_at,
     };
+    store.setUser(user);
+    monitoring.identify(user.id);
+    identifyPurchaseUser(user.id);
 
-    // Only update if not already set (avoid overwriting verifyOtp result)
-    if (!store.isAuthenticated) {
-      store.setUser(user);
-      monitoring.identify(user.id);
-      identifyPurchaseUser(user.id);
-    }
+  } else if (event === 'INITIAL_SESSION') {
+    // Handled by initialize() — ignore here to avoid race condition
+    store.setLoading(false);
+    return;
+
   } else if (event === 'SIGNED_OUT') {
     store.setUser(null);
     resetPurchaseUser();
+
   } else if (event === 'USER_UPDATED' && session?.user) {
     store.setUser({
       id: session.user.id,
       email: session.user.email ?? '',
       createdAt: session.user.created_at,
     });
+
   } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-    // Session silently refreshed — keep user in sync
     if (!store.user) {
       store.setUser({
         id: session.user.id,
