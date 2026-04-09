@@ -28,14 +28,12 @@ import { haptic } from '../../utils/haptics';
 
 interface HomeScreenProps {
   onNavigateToUpload: () => void;
-  onNavigateToHistory: () => void;
   onNavigateToWallet: () => void;
   onNavigateToSocialScan: () => void;
 }
 
 export function HomeScreen({
   onNavigateToUpload,
-  onNavigateToHistory,
   onNavigateToWallet,
   onNavigateToSocialScan,
 }: HomeScreenProps) {
@@ -183,10 +181,10 @@ export function HomeScreen({
         <View style={styles.actionGrid}>
           <QuickActionCard
             emoji="📊"
-            title={t.home.history}
+            title={t.common.scans}
             subtitle={`${totalScans} ${t.common.scans}`}
             color={c.accent.purple}
-            onPress={onNavigateToHistory}
+            onPress={onNavigateToWallet}
             delay={400}
           />
           <QuickActionCard

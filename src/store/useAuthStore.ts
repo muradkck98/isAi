@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { User } from '../types';
 import { zustandSecureStorage } from '../lib/storage';
 import { monitoring, Events } from '../lib/monitoring';
+import { identifyPurchaseUser, resetPurchaseUser } from '../lib/purchases';
 
 interface AuthState {
   user: User | null;
@@ -15,6 +16,8 @@ interface AuthState {
 
   /** Email waiting for OTP verification after register */
   pendingOtpEmail: string | null;
+  /** Pending registration data — set during register, consumed after OTP verify */
+  pendingRegistration: { password: string; phone?: string } | null;
 
   // Setters
   setUser: (user: User | null) => void;
@@ -36,13 +39,14 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       isAuthenticated: false,
       isLoading: true,
       hasCompletedOnboarding: false,
       error: null,
       pendingOtpEmail: null,
+      pendingRegistration: null,
 
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setLoading: (isLoading) => set({ isLoading }),
@@ -56,6 +60,7 @@ export const useAuthStore = create<AuthState>()(
           const user = await api.auth.login(email, password);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
           monitoring.identify(user.id);
+          identifyPurchaseUser(user.id);
           monitoring.track(Events.LOGIN_SUCCESS, { method: 'email' });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Login failed';
@@ -65,26 +70,24 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // ─── Register → sets pendingOtpEmail, does NOT log user in yet ────────
+      // ─── Register ─────────────────────────────────────────────────────────
+      // Sends OTP only — no signUp call, no confirmation link email.
+      // Account is finalized in verifyOtp() after code is confirmed.
       register: async (email, password, phone) => {
-        set({ isLoading: true, error: null });
+        // Set pendingOtpEmail BEFORE the API call so onAuthStateChange
+        // guard fires correctly if SIGNED_IN arrives during the request
+        set({ isLoading: true, error: null, pendingOtpEmail: email, pendingRegistration: { password, phone } });
         try {
           await api.auth.register(email, password, phone);
-          // Send OTP so user can verify their email
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email,
-            options: { shouldCreateUser: false },
-          });
-          if (otpError) throw otpError;
-          set({ isLoading: false, pendingOtpEmail: email });
+          set({ isLoading: false });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Registration failed';
-          set({ isLoading: false, error: message });
+          set({ isLoading: false, error: message, pendingOtpEmail: null, pendingRegistration: null });
           throw err;
         }
       },
 
-      // ─── Re-send OTP (from OTP screen "Resend" button) ────────────────────
+      // ─── Re-send OTP ──────────────────────────────────────────────────────
       sendOtp: async (email) => {
         set({ isLoading: true, error: null });
         try {
@@ -103,7 +106,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // ─── Verify OTP code (type = 'email' for signInWithOtp flow) ──────────
+      // ─── Verify OTP ───────────────────────────────────────────────────────
+      // 1. Verify the 6-digit code
+      // 2. If this is a new registration, update the password on the account
+      // 3. Save phone to profiles if provided
       verifyOtp: async (email, token) => {
         set({ isLoading: true, error: null });
         try {
@@ -113,32 +119,56 @@ export const useAuthStore = create<AuthState>()(
             type: 'email',
           });
           if (error) throw error;
-          if (data.user) {
-            set({
-              user: {
-                id: data.user.id,
-                email: data.user.email ?? '',
-                createdAt: data.user.created_at,
-              },
-              isAuthenticated: true,
-              pendingOtpEmail: null,
+          if (!data.user) throw new Error('Verification failed — no user returned');
+
+          const pending = get().pendingRegistration;
+
+          // If registering: set password on the newly created account
+          if (pending?.password) {
+            const { error: updateError } = await supabase.auth.updateUser({
+              password: pending.password,
             });
+            if (updateError) throw updateError;
+
+            // Save phone to profiles
+            if (pending.phone) {
+              await supabase
+                .from('profiles')
+                .upsert({ id: data.user.id, phone: pending.phone, provider: 'email' });
+            }
           }
+
+          const user: User = {
+            id: data.user.id,
+            email: data.user.email ?? '',
+            createdAt: data.user.created_at,
+          };
+
+          set({
+            user,
+            isAuthenticated: true,
+            pendingOtpEmail: null,
+            pendingRegistration: null,
+            isLoading: false,
+          });
+
+          monitoring.identify(user.id);
+          identifyPurchaseUser(user.id);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Code verification failed';
-          set({ error: message });
+          set({ error: message, isLoading: false });
           throw err;
-        } finally {
-          set({ isLoading: false });
         }
       },
 
-      // ─── Google OAuth (handled by LoginScreen + App.tsx deep link) ────────
+      // ─── Google OAuth ─────────────────────────────────────────────────────
       loginWithGoogle: async (idToken) => {
         set({ isLoading: true, error: null });
         try {
           const user = await api.auth.loginWithGoogle(idToken);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
+          monitoring.identify(user.id);
+          identifyPurchaseUser(user.id);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Google sign-in failed';
           set({ isLoading: false, error: message });
@@ -152,6 +182,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           monitoring.track(Events.LOGOUT);
           monitoring.reset();
+          resetPurchaseUser();
           await api.auth.logout();
         } catch {
           // Clear local state even if API fails
@@ -162,24 +193,30 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
             pendingOtpEmail: null,
+            pendingRegistration: null,
           });
         }
       },
 
       // ─── Restore session from SecureStore on app boot ─────────────────────
       initialize: async () => {
+        // Skip if already authenticated (e.g. onAuthStateChange already ran)
+        if (get().isAuthenticated) {
+          set({ isLoading: false });
+          return;
+        }
         set({ isLoading: true });
         try {
           const session = await api.auth.getSession();
           if (session?.user) {
-            set({
-              user: {
-                id: session.user.id,
-                email: session.user.email ?? '',
-                createdAt: session.user.created_at,
-              },
-              isAuthenticated: true,
-            });
+            const user: User = {
+              id: session.user.id,
+              email: session.user.email ?? '',
+              createdAt: session.user.created_at,
+            };
+            set({ user, isAuthenticated: true });
+            monitoring.identify(user.id);
+            identifyPurchaseUser(user.id);
           } else {
             set({ user: null, isAuthenticated: false });
           }
@@ -205,30 +242,47 @@ export const useAuthStore = create<AuthState>()(
 // Keeps local store in sync with Supabase session events
 // (token refresh, sign out from another device, Google OAuth callback)
 supabase.auth.onAuthStateChange((event, session) => {
-  const { setUser, setLoading, pendingOtpEmail } = useAuthStore.getState();
+  const store = useAuthStore.getState();
 
   if (event === 'SIGNED_IN' && session?.user) {
-    // Guard: if user is in OTP verification flow (registered but not yet verified),
-    // do NOT auto-login. This happens when Supabase email confirmation is disabled
-    // and signUp fires SIGNED_IN before the OTP step is complete.
-    if (pendingOtpEmail) {
-      setLoading(false);
+    // Guard: if user is in OTP flow, do NOT auto-login yet.
+    // This prevents signUp's SIGNED_IN event from bypassing OTP verification.
+    if (store.pendingOtpEmail) {
+      store.setLoading(false);
       return;
     }
-    setUser({
+
+    const user: User = {
       id: session.user.id,
       email: session.user.email ?? '',
       createdAt: session.user.created_at,
-    });
+    };
+
+    // Only update if not already set (avoid overwriting verifyOtp result)
+    if (!store.isAuthenticated) {
+      store.setUser(user);
+      monitoring.identify(user.id);
+      identifyPurchaseUser(user.id);
+    }
   } else if (event === 'SIGNED_OUT') {
-    setUser(null);
+    store.setUser(null);
+    resetPurchaseUser();
   } else if (event === 'USER_UPDATED' && session?.user) {
-    setUser({
+    store.setUser({
       id: session.user.id,
       email: session.user.email ?? '',
       createdAt: session.user.created_at,
     });
+  } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+    // Session silently refreshed — keep user in sync
+    if (!store.user) {
+      store.setUser({
+        id: session.user.id,
+        email: session.user.email ?? '',
+        createdAt: session.user.created_at,
+      });
+    }
   }
 
-  setLoading(false);
+  store.setLoading(false);
 });

@@ -6,6 +6,7 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
+// Note: withSpring used in FadeSlideWrapper translateY animation
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -14,12 +15,11 @@ import { UploadScreen } from '../screens/main/UploadScreen';
 import { SocialScanScreen } from '../screens/main/SocialScanScreen';
 import { ProcessingScreen } from '../screens/main/ProcessingScreen';
 import { ResultScreen } from '../screens/main/ResultScreen';
-import { HistoryScreen } from '../screens/main/HistoryScreen';
 import { WalletScreen } from '../screens/main/WalletScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { AnimatedTabBar } from '../components/ui/AnimatedTabBar';
 import { PaywallScreen } from '../screens/main/PaywallScreen';
-import { MainTabParamList, HomeStackParamList, ScanResult } from '../types';
+import { MainTabParamList, MainStackParamList, HomeStackParamList, ScanResult } from '../types';
 import { useScanStore } from '../store/useScanStore';
 import { useWalletStore } from '../store/useWalletStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -27,34 +27,35 @@ import { useTranslation } from '../hooks/useTranslation';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
+const MainStack = createNativeStackNavigator<MainStackParamList>();
 
 // ─── Tab transition wrapper ────────────────────────────────────────────────
+// Uses a single Animated.View with combined style to avoid Reanimated
+// "property may be overwritten by layout animation" warnings.
 function FadeSlideWrapper({ children }: { children: React.ReactNode }) {
-  const isFocused   = useIsFocused();
-  const opacity     = useSharedValue(0);
-  const translateY  = useSharedValue(10);
+  const isFocused  = useIsFocused();
+  const opacity    = useSharedValue(0);
+  const translateY = useSharedValue(8);
 
   useEffect(() => {
     if (isFocused) {
-      opacity.value    = withTiming(1,  { duration: 220 });
-      translateY.value = withSpring(0,  { damping: 24, stiffness: 260, mass: 0.75 });
+      opacity.value    = withTiming(1, { duration: 200 });
+      translateY.value = withSpring(0, { damping: 22, stiffness: 280, mass: 0.7 });
     } else {
-      opacity.value    = 0;
-      translateY.value = 10;
+      opacity.value    = withTiming(0, { duration: 100 });
+      translateY.value = 8;
     }
   }, [isFocused]);
 
-  const opacityStyle    = useAnimatedStyle(() => ({ flex: 1, opacity: opacity.value }));
-  const translateStyle  = useAnimatedStyle(() => ({
+  const animatedStyle = useAnimatedStyle(() => ({
     flex: 1,
+    opacity: opacity.value,
     transform: [{ translateY: translateY.value }],
   }));
 
   return (
-    <Animated.View style={opacityStyle}>
-      <Animated.View style={translateStyle}>
-        {children}
-      </Animated.View>
+    <Animated.View style={animatedStyle}>
+      {children}
     </Animated.View>
   );
 }
@@ -66,11 +67,21 @@ function HomeStackNavigator() {
   const { user } = useAuthStore();
   const { t } = useTranslation();
 
-  // Holds the in-flight scan promise so it runs PARALLEL with the ProcessingScreen animation
+  // In-flight scan promise runs PARALLEL with ProcessingScreen animation
   const pendingResult = useRef<Promise<ScanResult> | null>(null);
 
-  const showNoTokensAlert = () => {
-    Alert.alert(t.upload.noTokensTitle, t.upload.noTokensBody);
+  const showNoTokensAlert = (navigation: any) => {
+    Alert.alert(
+      t.upload.noTokensTitle,
+      t.upload.noTokensBody,
+      [
+        { text: t.common.cancel ?? 'Cancel', style: 'cancel' },
+        {
+          text: t.wallet.tokenPacks ?? 'Get Tokens',
+          onPress: () => navigation.getParent()?.getParent()?.navigate('Paywall'),
+        },
+      ]
+    );
   };
 
   return (
@@ -86,7 +97,6 @@ function HomeStackNavigator() {
           <FadeSlideWrapper>
             <HomeScreen
               onNavigateToUpload={() => navigation.navigate('Upload')}
-              onNavigateToHistory={() => navigation.getParent()?.navigate('History')}
               onNavigateToWallet={() => navigation.getParent()?.navigate('Wallet')}
               onNavigateToSocialScan={() => navigation.navigate('SocialScan')}
             />
@@ -103,7 +113,7 @@ function HomeStackNavigator() {
             onGoBack={() => navigation.goBack()}
             onImageSelected={(uri) => {
               if (!hasEnoughTokens()) {
-                showNoTokensAlert();
+                showNoTokensAlert(navigation);
                 return;
               }
               deductToken();
@@ -123,7 +133,7 @@ function HomeStackNavigator() {
             onGoBack={() => navigation.goBack()}
             onPostFetched={(thumbnailUri, socialMeta) => {
               if (!hasEnoughTokens()) {
-                showNoTokensAlert();
+                showNoTokensAlert(navigation);
                 return;
               }
               deductToken();
@@ -171,13 +181,16 @@ function HomeStackNavigator() {
                 setCurrentScan(enriched);
 
                 if (user?.id) {
-                  deductTokenRemote(user.id, result.id).catch(() => {});
+                  deductTokenRemote(user.id).catch(() => {});
                 }
 
                 navigation.replace('Result', { scanId: enriched.id });
-              } catch {
+              } catch (err) {
                 pendingResult.current = null;
-                navigation.goBack();
+                const message = err instanceof Error ? err.message : 'Analysis failed';
+                Alert.alert('Error', message, [
+                  { text: 'OK', onPress: () => navigation.goBack() },
+                ]);
               }
             }}
           />
@@ -198,33 +211,16 @@ function HomeStackNavigator() {
           />
         )}
       </HomeStack.Screen>
-
-      <HomeStack.Screen
-        name="Paywall"
-        options={{
-          animation: 'slide_from_bottom',
-          animationDuration: 400,
-          gestureEnabled: true,
-        }}
-      >
-        {({ navigation }) => (
-          <PaywallScreen
-            onClose={() => navigation.goBack()}
-            onPurchase={() => navigation.goBack()}
-          />
-        )}
-      </HomeStack.Screen>
     </HomeStack.Navigator>
   );
 }
 
 // ─── Tab screen wrappers ───────────────────────────────────────────────────
-function HistoryTab() { return <FadeSlideWrapper><HistoryScreen /></FadeSlideWrapper>; }
 function WalletTab()  { return <FadeSlideWrapper><WalletScreen /></FadeSlideWrapper>;  }
 function ProfileTab() { return <FadeSlideWrapper><ProfileScreen /></FadeSlideWrapper>; }
 
-// ─── Main navigator ────────────────────────────────────────────────────────
-export function MainNavigator() {
+// ─── Tab navigator ─────────────────────────────────────────────────────────
+function TabNavigator() {
   return (
     <Tab.Navigator
       tabBar={(props) => <AnimatedTabBar {...props} />}
@@ -234,9 +230,44 @@ export function MainNavigator() {
       }}
     >
       <Tab.Screen name="Home" component={HomeStackNavigator} />
-      <Tab.Screen name="History" component={HistoryTab} />
       <Tab.Screen name="Wallet" component={WalletTab} />
       <Tab.Screen name="Profile" component={ProfileTab} />
     </Tab.Navigator>
+  );
+}
+
+// ─── Main navigator (Tabs + Paywall modal) ─────────────────────────────────
+// Paywall is a root-level modal so any tab can navigate to it via
+// navigation.getParent()?.navigate('Paywall')
+export function MainNavigator() {
+  return (
+    <MainStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        presentation: 'modal',
+      }}
+    >
+      <MainStack.Screen
+        name="Tabs"
+        component={TabNavigator}
+        options={{ animation: 'none' }}
+      />
+      <MainStack.Screen
+        name="Paywall"
+        options={{
+          animation: 'slide_from_bottom',
+          animationDuration: 400,
+          gestureEnabled: true,
+          gestureDirection: 'vertical',
+        }}
+      >
+        {({ navigation }) => (
+          <PaywallScreen
+            onClose={() => navigation.goBack()}
+            onPurchase={() => navigation.goBack()}
+          />
+        )}
+      </MainStack.Screen>
+    </MainStack.Navigator>
   );
 }

@@ -258,6 +258,13 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
           </Card>
         </Animated.View>
 
+        {/* ── AI Generator Breakdown ───────────────────────────────────── */}
+        {scan.aiGenerators && Object.keys(scan.aiGenerators).length > 0 && (
+          <Animated.View entering={FadeInUp.delay(430).duration(500)} style={styles.sectionGap}>
+            <AIGeneratorCard generators={scan.aiGenerators} classColor={classColor} />
+          </Animated.View>
+        )}
+
         {/* ── Confidence Row ───────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(450).duration(500)} style={styles.sectionGap}>
           <Card variant="elevated" padding="lg">
@@ -418,6 +425,132 @@ const pillStyles = StyleSheet.create({
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   dot:      { width: 8, height: 8, borderRadius: 4 },
   value:    { ...typography.bodyMedium },
+});
+
+// ─── Generator labels ─────────────────────────────────────────────────────────
+const GENERATOR_LABELS: Record<string, string> = {
+  gpt:              'ChatGPT / DALL-E 3',
+  dalle:            'DALL-E',
+  midjourney:       'Midjourney',
+  stable_diffusion: 'Stable Diffusion',
+  flux:             'Flux',
+  firefly:          'Adobe Firefly',
+  ideogram:         'Ideogram',
+  imagen:           'Google Imagen',
+  higgsfield:       'Higgsfield',
+  qwen:             'Qwen',
+  recraft:          'Recraft',
+  reve:             'Reve',
+  seedream:         'Seedream',
+  wan:              'WAN',
+  z_image:          'Z-Image',
+  gan:              'GAN',
+  other:            'Other AI',
+};
+
+// ─── AI Generator Card ────────────────────────────────────────────────────────
+function AIGeneratorCard({
+  generators,
+  classColor,
+}: {
+  generators: Record<string, number>;
+  classColor: string;
+}) {
+  const c = useThemeColors();
+
+  // Sort by score desc, show all with score > 0
+  const sorted = Object.entries(generators)
+    .filter(([, v]) => v > 0)
+    .sort(([, a], [, b]) => b - a);
+
+  const topScore = sorted[0]?.[1] ?? 1;
+
+  // Animated bar widths
+  const barValues = sorted.map(() => useSharedValue(0));
+  useEffect(() => {
+    barValues.forEach((sv, i) => {
+      sv.value = withDelay(
+        500 + i * 60,
+        withTiming(sorted[i][1] / topScore, { duration: 800, easing: Easing.out(Easing.cubic) })
+      );
+    });
+  }, []);
+
+  return (
+    <Card variant="elevated" padding="lg">
+      <Text style={[styles.sectionLabel, { color: c.neutral[400] }]}>
+        AI GENERATOR DETECTED
+      </Text>
+
+      <View style={genStyles.list}>
+        {sorted.map(([key, pct], i) => {
+          const label = GENERATOR_LABELS[key] ?? key;
+          const isTop = i === 0;
+          const barStyle = useAnimatedStyle(() => ({
+            width: `${barValues[i].value * 100}%` as any,
+          }));
+
+          return (
+            <View key={key} style={genStyles.row}>
+              {/* Label + badge */}
+              <View style={genStyles.labelRow}>
+                <View style={genStyles.labelLeft}>
+                  {isTop && (
+                    <View style={[genStyles.topBadge, { backgroundColor: classColor + '20' }]}>
+                      <Text style={[genStyles.topBadgeText, { color: classColor }]}>TOP</Text>
+                    </View>
+                  )}
+                  <Text
+                    style={[
+                      genStyles.label,
+                      { color: isTop ? c.neutral[900] : c.neutral[600] },
+                      isTop && { fontWeight: '700' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {label}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    genStyles.pct,
+                    { color: isTop ? classColor : c.neutral[500] },
+                    isTop && { fontWeight: '700' },
+                  ]}
+                >
+                  {pct}%
+                </Text>
+              </View>
+
+              {/* Bar */}
+              <View style={[genStyles.track, { backgroundColor: c.neutral[100] }]}>
+                <Animated.View
+                  style={[
+                    genStyles.fill,
+                    { backgroundColor: isTop ? classColor : c.neutral[300] },
+                    barStyle,
+                  ]}
+                />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
+const genStyles = StyleSheet.create({
+  list:     { gap: spacing.md },
+  row:      { gap: 5 },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  labelLeft:{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flex: 1 },
+  topBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  topBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  label:    { ...typography.bodySm, flex: 1 },
+  pct:      { ...typography.bodySm, minWidth: 42, textAlign: 'right' },
+  track:    { height: 7, borderRadius: 4, overflow: 'hidden' },
+  fill:     { height: '100%', borderRadius: 4 },
 });
 
 // ─── Social Post Card ─────────────────────────────────────────────────────────

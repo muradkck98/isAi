@@ -18,6 +18,8 @@ export interface ScanResult {
   userId: string;
   imageUrl: string;
   aiProbability: number;
+  deepfakeProbability?: number;
+  aiGenerators?: Record<string, number>; // e.g. { gpt: 95, dalle: 1 }
   classification: 'ai_generated' | 'likely_ai' | 'uncertain' | 'likely_real' | 'real';
   confidenceLevel: 'high' | 'medium' | 'low';
   createdAt: string;
@@ -68,9 +70,13 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Home: undefined;
-  History: undefined;
   Wallet: undefined;
   Profile: undefined;
+};
+
+export type MainStackParamList = {
+  Tabs: undefined;
+  Paywall: undefined;
 };
 
 export type HomeStackParamList = {

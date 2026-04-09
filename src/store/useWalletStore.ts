@@ -22,7 +22,7 @@ interface WalletState {
 
   // Supabase sync
   syncFromSupabase: (userId: string) => Promise<void>;
-  deductTokenRemote: (userId: string, scanId: string) => Promise<void>;
+  deductTokenRemote: (userId: string) => Promise<void>;
   addAdTokensRemote: (userId: string) => Promise<void>;
   addPurchasedTokensRemote: (userId: string, amount: number) => Promise<void>;
 
@@ -83,10 +83,10 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
     }
   },
 
-  deductTokenRemote: async (userId, scanId) => {
+  deductTokenRemote: async (userId) => {
     get().deductToken();
     try {
-      const newTokens = await api.wallet.deductToken(userId, scanId);
+      const newTokens = await api.wallet.deductToken(userId);
       set({ tokens: newTokens });
     } catch {
       // Rollback optimistic update

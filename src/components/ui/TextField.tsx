@@ -7,6 +7,7 @@ import {
   TextInputProps,
   TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -86,11 +87,14 @@ export function TextField({
           </TouchableOpacity>
         )}
       </Animated.View>
-      {(error || hint) && (
-        <Text style={[styles.hint, error && styles.errorText]}>
-          {error || hint}
-        </Text>
-      )}
+      {error ? (
+        <View style={styles.errorRow}>
+          <Ionicons name="alert-circle-outline" size={13} color={colors.error} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : hint ? (
+        <Text style={styles.hint}>{hint}</Text>
+      ) : null}
     </View>
   );
 }
@@ -141,7 +145,15 @@ const styles = StyleSheet.create({
     color: colors.neutral[500],
     marginTop: spacing.xs,
   },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.xs,
+  },
   errorText: {
+    ...typography.caption,
     color: colors.error,
+    flex: 1,
   },
 });

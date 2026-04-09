@@ -11,6 +11,9 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useWalletStore } from '../store/useWalletStore';
 import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../types';
+import { validateEnv } from '../config/env';
+import { initializePurchases } from '../lib/purchases';
+import { initializeAds } from '../lib/ads';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -27,14 +30,20 @@ export function RootNavigator() {
   const [showSplash, setShowSplash] = useState(true);
   const [appReady, setAppReady] = useState(false);
 
-  // Restore Supabase session from SecureStore on app boot
+  // Boot once on mount — validate env, initialize SDKs, restore session
   useEffect(() => {
     const boot = async () => {
-      await initialize();
+      validateEnv();
+      await Promise.all([
+        initialize(),
+        initializePurchases().catch(() => {}),
+        initializeAds().catch(() => {}),
+      ]);
       setAppReady(true);
     };
     boot();
-  }, [initialize]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — run once on mount only
 
   // ─── Android Google OAuth deep-link handler ────────────────────────────────
   // When Chrome Custom Tab redirects to isai://auth/callback?code=...

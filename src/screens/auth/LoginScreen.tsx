@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, TextInput, Modal, Pressable } from 'react-native';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { useForm, Controller } from 'react-hook-form';
@@ -6,15 +6,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-
-// Must be called at module level so it runs as soon as the auth screen mounts
-// after Android redirects back from Chrome Custom Tab
-WebBrowser.maybeCompleteAuthSession();
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
+
+WebBrowser.maybeCompleteAuthSession();
+
 import { Screen } from '../../components/layout/Screen';
 import { TextField } from '../../components/ui/TextField';
+import { PhoneInput } from '../../components/ui/PhoneInput';
 import { Button } from '../../components/ui/Button';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -31,37 +31,298 @@ import { AuthStackParamList } from '../../types';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
+// ─── Schemas (outside component — stable across renders) ──────────────────────
 type LoginForm    = { email: string; password: string };
 type RegisterForm = { email: string; password: string; phone: string };
 
+const loginSchema = z.object({
+  email:    z.string()
+    .min(1, 'Email is required')
+    .email('Please enter a valid email address'),
+  password: z.string()
+    .min(1, 'Password is required')
+    .min(6, 'Password must be at least 6 characters'),
+});
+
+const registerSchema = z.object({
+  email:    z.string()
+    .min(1, 'Email is required')
+    .email('Please enter a valid email address'),
+  password: z.string()
+    .min(1, 'Password is required')
+    .min(6, 'Password must be at least 6 characters')
+    .max(72, 'Password is too long'),
+  phone:    z.string()
+    .min(1, 'Phone number is required')
+    .regex(/^\+\d{7,15}$/, 'Please select a country and enter your number'),
+});
+
+// ─── Register Form (isolated component — re-renders don't affect parent) ──────
+interface RegisterFormProps {
+  onSubmit: (data: RegisterForm) => Promise<void>;
+  isLoading: boolean;
+}
+
+const RegisterFormFields = memo(({ onSubmit, isLoading }: RegisterFormProps) => {
+  const { t } = useTranslation();
+  const c = useThemeColors();
+  const { control, handleSubmit, formState: { errors }, watch } = useForm<RegisterForm>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { email: '', password: '', phone: '' },
+    mode: 'onBlur', // validate on blur, not on every keystroke
+  });
+
+  const password = watch('password', '');
+  const passwordStrength = password.length === 0 ? null
+    : password.length < 6  ? 'weak'
+    : password.length < 10 ? 'fair'
+    : /[A-Z]/.test(password) && /[0-9]/.test(password) ? 'strong'
+    : 'good';
+
+  const strengthColor = {
+    weak:   '#EF4444',
+    fair:   '#F59E0B',
+    good:   '#3B82F6',
+    strong: '#10B981',
+  };
+  const strengthLabel = {
+    weak:   'Weak',
+    fair:   'Fair',
+    good:   'Good',
+    strong: 'Strong',
+  };
+
+  return (
+    <>
+      {/* Email */}
+      <Controller
+        control={control}
+        name="email"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextField
+            label={t.auth.email}
+            placeholder={t.auth.emailPlaceholder}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            returnKeyType="next"
+            value={value}
+            onChangeText={onChange}
+            onBlur={onBlur}
+            error={errors.email?.message}
+          />
+        )}
+      />
+
+      {/* Phone with country picker */}
+      <Controller
+        control={control}
+        name="phone"
+        render={({ field: { onChange, value } }) => (
+          <PhoneInput
+            label={t.auth.phone}
+            value={value}
+            onChangeText={onChange}
+            error={errors.phone?.message}
+          />
+        )}
+      />
+
+      {/* Password */}
+      <Controller
+        control={control}
+        name="password"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <View>
+            <TextField
+              label={t.auth.password}
+              placeholder={t.auth.passwordPlaceholder}
+              secureTextEntry
+              autoComplete="new-password"
+              returnKeyType="done"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              error={errors.password?.message}
+            />
+            {/* Password strength bar */}
+            {passwordStrength && (
+              <View style={formStyles.strengthRow}>
+                <View style={formStyles.strengthBars}>
+                  {(['weak', 'fair', 'good', 'strong'] as const).map((level, i) => {
+                    const levels = { weak: 1, fair: 2, good: 3, strong: 4 };
+                    const active = levels[passwordStrength] > i;
+                    return (
+                      <View
+                        key={level}
+                        style={[
+                          formStyles.strengthBar,
+                          { backgroundColor: active ? strengthColor[passwordStrength] : '#E5E7EB' },
+                        ]}
+                      />
+                    );
+                  })}
+                </View>
+                <Text style={[formStyles.strengthLabel, { color: strengthColor[passwordStrength] }]}>
+                  {strengthLabel[passwordStrength]}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      />
+
+      {/* Info box */}
+      <View style={[formStyles.infoBox, { backgroundColor: c.primary[50] }]}>
+        <Ionicons name="shield-checkmark-outline" size={16} color={c.primary[500]} />
+        <Text style={[formStyles.infoText, { color: c.primary[600] }]}>
+          {t.auth.otpInfoText}
+        </Text>
+      </View>
+
+      <Button
+        title={t.auth.signUp}
+        onPress={handleSubmit(onSubmit)}
+        loading={isLoading}
+        disabled={isLoading}
+        size="lg"
+      />
+    </>
+  );
+});
+
+const formStyles = StyleSheet.create({
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  infoText: { ...typography.caption, flex: 1, lineHeight: 18 },
+  strengthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  strengthBars: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  strengthBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    minWidth: 40,
+    textAlign: 'right',
+  },
+});
+
+// ─── Login Form (isolated component) ─────────────────────────────────────────
+interface LoginFormProps {
+  onSubmit: (data: LoginForm) => Promise<void>;
+  isLoading: boolean;
+  onForgotPassword: () => void;
+}
+
+const LoginFormFields = memo(({ onSubmit, isLoading, onForgotPassword }: LoginFormProps) => {
+  const { t } = useTranslation();
+  const c = useThemeColors();
+  const { control, handleSubmit, formState: { errors } } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+    mode: 'onBlur',
+  });
+
+  return (
+    <>
+      <Controller
+        control={control}
+        name="email"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextField
+            label={t.auth.email}
+            placeholder={t.auth.emailPlaceholder}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            returnKeyType="next"
+            value={value}
+            onChangeText={onChange}
+            onBlur={onBlur}
+            error={errors.email?.message}
+          />
+        )}
+      />
+      <Controller
+        control={control}
+        name="password"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextField
+            label={t.auth.password}
+            placeholder={t.auth.passwordPlaceholder}
+            secureTextEntry
+            autoComplete="password"
+            returnKeyType="done"
+            value={value}
+            onChangeText={onChange}
+            onBlur={onBlur}
+            error={errors.password?.message}
+          />
+        )}
+      />
+      <TouchableOpacity style={loginStyles.forgotPassword} onPress={onForgotPassword}>
+        <Text style={[loginStyles.forgotText, { color: c.primary[500] }]}>
+          {t.auth.forgotPassword}
+        </Text>
+      </TouchableOpacity>
+      <Button
+        title={t.auth.signIn}
+        onPress={handleSubmit(onSubmit)}
+        loading={isLoading}
+        disabled={isLoading}
+        size="lg"
+      />
+    </>
+  );
+});
+
+const loginStyles = StyleSheet.create({
+  forgotPassword: { alignSelf: 'flex-end', marginTop: spacing.xs, marginBottom: spacing.sm },
+  forgotText: { ...typography.bodySm, fontWeight: '500' },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export function LoginScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+
   const [isRegister, setIsRegister] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
-  const { login, register, isLoading, error, setError } = useAuthStore();
-  const { syncFromSupabase } = useWalletStore();
+  const login     = useAuthStore((s) => s.login);
+  const register  = useAuthStore((s) => s.register);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const setError  = useAuthStore((s) => s.setError);
+  const syncFromSupabase = useWalletStore((s) => s.syncFromSupabase);
 
-  // ─── i18n-aware Zod schemas ───────────────────────────────────────────────
-  const loginSchema = useMemo(() => z.object({
-    email:    z.string().email(t.auth.emailError),
-    password: z.string().min(6, t.auth.passwordError),
-  }), [t]);
+  const anyLoading = isLoading || googleLoading;
 
-  const registerSchema = useMemo(() => z.object({
-    email:    z.string().email(t.auth.emailError),
-    password: z.string().min(6, t.auth.passwordError),
-    phone:    z.string()
-      .min(10, t.auth.phoneError)
-      .regex(/^\+?[0-9\s\-().]{10,}$/, t.auth.phoneInvalidError),
-  }), [t]);
-
-  // ─── Forgot password ──────────────────────────────────────────────────────
+  // ─── Forgot password ────────────────────────────────────────────────────────
   const handleForgotPassword = async () => {
     const email = resetEmail.trim();
     if (!email) return;
@@ -80,48 +341,46 @@ export function LoginScreen() {
     }
   };
 
-  // ─── Google OAuth — Supabase web flow ────────────────────────────────────
+  const openForgotPassword = useCallback(() => {
+    haptic.light();
+    setResetEmail('');
+    setShowForgotPassword(true);
+  }, []);
+
+  // ─── Google OAuth ────────────────────────────────────────────────────────────
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     haptic.light();
     monitoring.track(Events.GOOGLE_LOGIN_START);
     try {
       const redirectUrl = Linking.createURL('auth/callback');
-
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
           skipBrowserRedirect: true,
-          queryParams: {
-            prompt: 'select_account',
-          },
+          queryParams: { prompt: 'select_account' },
         },
       });
 
       if (oauthError) throw oauthError;
       if (!data.url) throw new Error('Google OAuth URL alınamadı');
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        redirectUrl,
-        { showInRecents: true, preferEphemeralSession: false }
-      );
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl, {
+        showInRecents: true,
+        preferEphemeralSession: false,
+      });
 
       if (result.type === 'success' && result.url) {
-        // Implicit flow: tokens come back in URL fragment (#access_token=...)
         const raw = result.url;
-        const hashIndex = raw.indexOf('#');
+        const hashIndex  = raw.indexOf('#');
         const queryIndex = raw.indexOf('?');
         let paramStr = '';
-        if (hashIndex !== -1) {
-          paramStr = raw.slice(hashIndex + 1);
-        } else if (queryIndex !== -1) {
-          paramStr = raw.slice(queryIndex + 1);
-        }
+        if (hashIndex !== -1)       paramStr = raw.slice(hashIndex + 1);
+        else if (queryIndex !== -1) paramStr = raw.slice(queryIndex + 1);
 
-        const params = new URLSearchParams(paramStr);
-        const accessToken = params.get('access_token');
+        const params       = new URLSearchParams(paramStr);
+        const accessToken  = params.get('access_token');
         const refreshToken = params.get('refresh_token');
 
         if (accessToken && refreshToken) {
@@ -132,18 +391,15 @@ export function LoginScreen() {
           if (sessionError) throw sessionError;
           monitoring.track(Events.GOOGLE_LOGIN_SUCCESS);
         } else {
-          // Fallback: try code exchange (shouldn't happen with implicit flow)
           const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
           if (sessionError) throw sessionError;
         }
 
-        setTimeout(() => {
-          const userId = useAuthStore.getState().user?.id;
-          if (userId) {
-            monitoring.identify(userId);
-            syncFromSupabase(userId).catch(() => {});
-          }
-        }, 500);
+        const userId = useAuthStore.getState().user?.id;
+        if (userId) {
+          monitoring.identify(userId);
+          syncFromSupabase(userId).catch(() => {});
+        }
         haptic.success();
       }
     } catch (err: unknown) {
@@ -155,18 +411,8 @@ export function LoginScreen() {
     }
   };
 
-  // ─── Email / password forms ───────────────────────────────────────────────
-  const loginForm = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
-  });
-
-  const registerForm = useForm<RegisterForm>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: { email: '', password: '', phone: '' },
-  });
-
-  const onLoginSubmit = async (data: LoginForm) => {
+  // ─── Submit handlers ─────────────────────────────────────────────────────────
+  const onLoginSubmit = useCallback(async (data: LoginForm) => {
     setError(null);
     try {
       await login(data.email, data.password);
@@ -178,32 +424,29 @@ export function LoginScreen() {
       const msg = err instanceof Error ? err.message : t.auth.loginFailed;
       Alert.alert(t.auth.loginError, msg);
     }
-  };
+  }, [login, setError, syncFromSupabase, t]);
 
-  const onRegisterSubmit = async (data: RegisterForm) => {
+  const onRegisterSubmit = useCallback(async (data: RegisterForm) => {
     setError(null);
     try {
-      // register() creates account + sends OTP, sets pendingOtpEmail
       await register(data.email, data.password, data.phone);
       haptic.success();
-      // Navigate to OTP verification screen
-      navigation.navigate('OTPVerify', { email: data.email });
+      // Use setTimeout to ensure navigation happens after state updates settle
+      setTimeout(() => {
+        navigation.navigate('OTPVerify', { email: data.email });
+      }, 100);
     } catch (err: unknown) {
       haptic.error();
       const msg = err instanceof Error ? err.message : t.auth.registerFailed;
       Alert.alert(t.auth.registerError, msg);
     }
-  };
+  }, [register, setError, navigation, t]);
 
   const switchMode = () => {
     haptic.selection();
-    setIsRegister(!isRegister);
+    setIsRegister((v) => !v);
     setError(null);
-    loginForm.reset();
-    registerForm.reset();
   };
-
-  const anyLoading = isLoading || googleLoading;
 
   return (
     <Screen scrollable keyboardAware backgroundColor={c.background.primary}>
@@ -219,148 +462,36 @@ export function LoginScreen() {
           </Text>
         </Animated.View>
 
-        {/* Form */}
+        {/* Form — isolated components prevent parent re-renders from clearing inputs */}
         <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.form}>
           {isRegister ? (
-            <>
-              <Controller
-                control={registerForm.control}
-                name="email"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextField
-                    label={t.auth.email}
-                    placeholder={t.auth.emailPlaceholder}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    returnKeyType="next"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={registerForm.formState.errors.email?.message}
-                  />
-                )}
-              />
-              <Controller
-                control={registerForm.control}
-                name="phone"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextField
-                    label={t.auth.phone}
-                    placeholder={t.auth.phonePlaceholder}
-                    keyboardType="phone-pad"
-                    autoComplete="tel"
-                    returnKeyType="next"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={registerForm.formState.errors.phone?.message}
-                  />
-                )}
-              />
-              <Controller
-                control={registerForm.control}
-                name="password"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextField
-                    label={t.auth.password}
-                    placeholder={t.auth.passwordPlaceholder}
-                    secureTextEntry
-                    autoComplete="new-password"
-                    returnKeyType="done"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={registerForm.formState.errors.password?.message}
-                  />
-                )}
-              />
-              <View style={[styles.infoBox, { backgroundColor: c.primary[50] }]}>
-                <Ionicons name="shield-checkmark-outline" size={16} color={c.primary[500]} />
-                <Text style={[styles.infoText, { color: c.primary[600] }]}>
-                  {t.auth.otpInfoText}
-                </Text>
-              </View>
-            </>
+            <RegisterFormFields
+              onSubmit={onRegisterSubmit}
+              isLoading={isLoading}
+            />
           ) : (
-            <>
-              <Controller
-                control={loginForm.control}
-                name="email"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextField
-                    label={t.auth.email}
-                    placeholder={t.auth.emailPlaceholder}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    returnKeyType="next"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={loginForm.formState.errors.email?.message}
-                  />
-                )}
-              />
-              <Controller
-                control={loginForm.control}
-                name="password"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <TextField
-                    label={t.auth.password}
-                    placeholder={t.auth.passwordPlaceholder}
-                    secureTextEntry
-                    autoComplete="password"
-                    returnKeyType="done"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={loginForm.formState.errors.password?.message}
-                  />
-                )}
-              />
-              <TouchableOpacity style={styles.forgotPassword} onPress={() => { haptic.light(); setResetEmail(''); setShowForgotPassword(true); }}>
-                <Text style={[styles.forgotText, { color: c.primary[500] }]}>
-                  {t.auth.forgotPassword}
-                </Text>
-              </TouchableOpacity>
-            </>
+            <LoginFormFields
+              onSubmit={onLoginSubmit}
+              isLoading={isLoading}
+              onForgotPassword={openForgotPassword}
+            />
           )}
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </Animated.View>
 
-        {/* Actions */}
+        {/* Divider + Google + Switch */}
         <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.actions}>
-          <Button
-            title={isRegister ? t.auth.signUp : t.auth.signIn}
-            onPress={
-              isRegister
-                ? registerForm.handleSubmit(onRegisterSubmit)
-                : loginForm.handleSubmit(onLoginSubmit)
-            }
-            loading={isLoading}
-            disabled={anyLoading}
-            size="lg"
-          />
-
-          {/* Divider */}
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: c.neutral[200] }]} />
             <Text style={[styles.dividerText, { color: c.neutral[400] }]}>{t.common.or}</Text>
             <View style={[styles.dividerLine, { backgroundColor: c.neutral[200] }]} />
           </View>
 
-          {/* Google button */}
           <TouchableOpacity
-            style={[
-              styles.googleBtn,
-              {
-                borderColor: c.neutral[300],
-                backgroundColor: c.neutral[50],
-                opacity: anyLoading ? 0.6 : 1,
-              },
-            ]}
+            style={[styles.googleBtn, {
+              borderColor: c.neutral[300],
+              backgroundColor: c.neutral[50],
+              opacity: anyLoading ? 0.6 : 1,
+            }]}
             onPress={handleGoogleSignIn}
             disabled={anyLoading}
             activeOpacity={0.8}
@@ -371,7 +502,6 @@ export function LoginScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* Switch mode */}
           <TouchableOpacity style={styles.switchMode} onPress={switchMode} disabled={anyLoading}>
             <Text style={[styles.switchText, { color: c.neutral[500] }]}>
               {isRegister ? t.auth.hasAccount : t.auth.noAccount}
@@ -382,10 +512,19 @@ export function LoginScreen() {
           </TouchableOpacity>
         </Animated.View>
       </View>
-      {/* ─── Forgot Password Modal ─────────────────────────────────────── */}
-      <Modal visible={showForgotPassword} transparent animationType="fade" onRequestClose={() => setShowForgotPassword(false)}>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={showForgotPassword}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowForgotPassword(false)}
+      >
         <Pressable style={fpStyles.overlay} onPress={() => setShowForgotPassword(false)}>
-          <Pressable style={[fpStyles.sheet, { backgroundColor: c.neutral[0] }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[fpStyles.sheet, { backgroundColor: c.neutral[0] }]}
+            onPress={(e) => e.stopPropagation()}
+          >
             <Text style={[fpStyles.title, { color: c.neutral[900] }]}>{t.auth.forgotPasswordTitle}</Text>
             <Text style={[fpStyles.subtitle, { color: c.neutral[500] }]}>{t.auth.forgotPasswordSubtitle}</Text>
             <TextInput
@@ -420,14 +559,9 @@ export function LoginScreen() {
 function GoogleIcon({ size = 22 }: { size?: number }) {
   return (
     <View style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      backgroundColor: '#fff',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: '#E8EAED',
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: '#E8EAED',
     }}>
       <Text style={{ fontSize: size * 0.65, fontWeight: '700', color: '#4285F4', includeFontPadding: false, textAlignVertical: 'center' }}>G</Text>
     </View>
@@ -447,46 +581,20 @@ const fpStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', paddingVertical: spacing['3xl'] },
-  header: { alignItems: 'center', marginBottom: spacing['3xl'] },
-  title: { ...typography.h1, marginBottom: spacing.sm },
-  subtitle: { ...typography.body, textAlign: 'center' },
-  form: { marginBottom: spacing.lg, gap: spacing.sm },
-  forgotPassword: { alignSelf: 'flex-end', marginTop: spacing.xs },
-  forgotText: { ...typography.bodySm, fontWeight: '500' },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    marginTop: spacing.xs,
-  },
-  infoText: { ...typography.caption, flex: 1, lineHeight: 18 },
-  errorText: { ...typography.bodySm, color: '#EF4444', textAlign: 'center', marginTop: spacing.xs },
-  actions: { gap: spacing.lg },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  container:   { flex: 1, justifyContent: 'center', paddingVertical: spacing['3xl'] },
+  header:      { alignItems: 'center', marginBottom: spacing['3xl'] },
+  title:       { ...typography.h1, marginBottom: spacing.sm },
+  subtitle:    { ...typography.body, textAlign: 'center' },
+  form:        { marginBottom: spacing.lg, gap: spacing.sm },
+  actions:     { gap: spacing.lg },
+  divider:     { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   dividerLine: { flex: 1, height: 1 },
   dividerText: { ...typography.bodySm },
   googleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.lg,
-    borderRadius: radius.xl,
-    borderWidth: 1.5,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.md, paddingVertical: spacing.lg, borderRadius: radius.xl, borderWidth: 1.5,
   },
-  googleLogo: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#4285F4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleLogoText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   googleBtnText: { ...typography.bodyMedium },
-  switchMode: { alignItems: 'center', paddingVertical: spacing.sm },
-  switchText: { ...typography.body },
+  switchMode:    { alignItems: 'center', paddingVertical: spacing.sm },
+  switchText:    { ...typography.body },
 });

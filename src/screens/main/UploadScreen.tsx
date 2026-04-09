@@ -77,13 +77,13 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.85,
         allowsMultipleSelection: false,
         exif: false,
       });
 
-      if (!result.canceled && result.assets.length > 0) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         const uri = result.assets[0].uri;
         haptic.success();
         onImageSelected(uri);
@@ -110,12 +110,12 @@ export function UploadScreen({ onGoBack, onImageSelected }: UploadScreenProps) {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.85,
         exif: false,
       });
 
-      if (!result.canceled && result.assets.length > 0) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         const uri = result.assets[0].uri;
         haptic.success();
         onImageSelected(uri);

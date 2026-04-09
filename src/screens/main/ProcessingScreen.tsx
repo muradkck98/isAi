@@ -36,7 +36,7 @@ const PLATFORM_ICONS: Record<SocialPlatform, { icon: IoniconsName; color: string
 interface ProcessingScreenProps {
   imageUri: string;
   socialMeta?: SocialPostMeta;
-  onComplete: (scanId: string) => void;
+  onComplete: () => void;
 }
 
 export function ProcessingScreen({ imageUri, socialMeta, onComplete }: ProcessingScreenProps) {
@@ -75,9 +75,9 @@ export function ProcessingScreen({ imageUri, socialMeta, onComplete }: Processin
       withDelay(1000, withTiming(3, { duration: 300 }))
     );
 
-    // Simulate completion
+    // Trigger completion after animation
     const timer = setTimeout(() => {
-      onComplete(`scan_${Date.now()}`);
+      onComplete();
     }, 3500);
 
     return () => clearTimeout(timer);

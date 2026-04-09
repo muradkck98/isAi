@@ -32,6 +32,8 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { TOKEN_PACKS } from '../../constants';
 import { haptic } from '../../utils/haptics';
 import { formatPrice } from '../../utils/format';
+import { purchaseTokenPack } from '../../lib/purchases';
+import { showRewardedAd } from '../../lib/ads';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -58,7 +60,7 @@ interface PaywallScreenProps {
 export function PaywallScreen({ onClose, onPurchase }: PaywallScreenProps) {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { tokens, addAdTokensRemote } = useWalletStore();
+  const { tokens, addAdTokensRemote, addPurchasedTokensRemote } = useWalletStore();
   const { user } = useAuthStore();
   const [selectedPack, setSelectedPack] = useState(
     TOKEN_PACKS.findIndex((p) => p.popular) ?? 1
@@ -86,32 +88,37 @@ export function PaywallScreen({ onClose, onPurchase }: PaywallScreenProps) {
   const handlePurchase = async () => {
     haptic.medium();
     const pack = TOKEN_PACKS[selectedPack];
-    if (!pack) return;
+    if (!pack || !user?.id) return;
 
     setLoading(true);
     try {
-      // TODO: RevenueCat integration
-      // Steps:
-      // 1. npm install react-native-purchases
-      // 2. const offerings = await Purchases.getOfferings()
-      // 3. const pkg = offerings.current?.availablePackages.find(p => p.identifier === pack.id)
-      // 4. await Purchases.purchasePackage(pkg)
-      // 5. await addPurchasedTokensRemote(user.id, pack.tokens)
-      Alert.alert(
-        '🚀 Coming Soon',
-        `${pack.name} — ${pack.tokens} tokens for ${formatPrice(pack.price, pack.currency)}\n\nIn-app purchase will be available in the next update!`,
-        [{ text: 'OK', onPress: () => onPurchase?.(pack.tokens) }]
+      const result = await purchaseTokenPack(
+        pack.id,
+        pack.tokens,
+        formatPrice(pack.price, pack.currency)
       );
+
+      if (result.success && result.tokens) {
+        await addPurchasedTokensRemote(user.id, result.tokens);
+        haptic.success();
+        onPurchase?.(result.tokens);
+      }
+      // userCancelled: silently ignore
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Purchase failed';
+      Alert.alert('Purchase Error', msg);
     } finally {
       setLoading(false);
     }
   };
 
   const handleWatchAd = async () => {
+    if (!user?.id || adLoading) return;
     haptic.medium();
     setAdLoading(true);
     try {
-      if (user?.id) {
+      const result = await showRewardedAd();
+      if (result.earned) {
         await addAdTokensRemote(user.id);
         haptic.success();
         Alert.alert('🎉 +1 Token Earned!', 'Watch more ads to earn more tokens.');

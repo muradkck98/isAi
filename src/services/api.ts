@@ -1,14 +1,15 @@
-// ─── API Service — Supabase Integration ──────────────────────────────────────
-// Auth   → Supabase Auth (email/password + Google OAuth)
-// DB     → Supabase PostgreSQL (wallets, scans tables)
-// AI     → Sightengine via Supabase Edge Function (API key stays server-side)
+// ─── API Service ──────────────────────────────────────────────────────────────
+// Auth   → Supabase Auth
+// AI     → Sightengine via Edge Function (base64, no Storage upload)
+// Wallet → Supabase wallets table
+// No scan history stored — reduces cost and complexity.
 
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { ScanResult, User, WalletInfo } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Map Supabase auth user → app User */
 function mapUser(supabaseUser: { id: string; email?: string; created_at: string }): User {
   return {
     id: supabaseUser.id,
@@ -17,37 +18,36 @@ function mapUser(supabaseUser: { id: string; email?: string; created_at: string 
   };
 }
 
-/**
- * AI Detection via Supabase Edge Function → Sightengine
- *
- * Flow: mobile → supabase.functions.invoke('detect-ai') → Sightengine API
- * API keys never leave the server.
- *
- * Deploy Edge Function:
- *   supabase functions deploy detect-ai
- *   supabase secrets set SIGHTENGINE_API_USER=xxx SIGHTENGINE_API_SECRET=yyy
- *
- * Falls back to mock if Edge Function returns an error (dev/staging safety net).
- */
-async function callAIDetection(imageUri: string): Promise<{ probability: number }> {
-  try {
-    const { data, error } = await supabase.functions.invoke('detect-ai', {
-      body: { image_url: imageUri },
-    });
+interface AIDetectionResult {
+  probability: number;
+  deepfake: number;
+  generators: Record<string, number>;
+}
 
-    if (error) throw new Error(error.message);
-    if (typeof data?.probability !== 'number') throw new Error('Invalid response from detect-ai');
+async function callAIDetection(
+  imageUri: string,
+  base64?: string
+): Promise<AIDetectionResult> {
+  const isRemote = imageUri.startsWith('http://') || imageUri.startsWith('https://');
 
-    return { probability: data.probability };
-  } catch (err) {
-    // Dev fallback: if Edge Function not deployed yet, use mock
-    if (__DEV__) {
-      console.warn('[AI Detection] Edge Function unavailable, using mock:', err);
-      await new Promise((r) => setTimeout(r, 1500));
-      return { probability: Math.round(Math.random() * 100 * 10) / 10 };
-    }
-    throw err;
-  }
+  const body = isRemote
+    ? { image_url: imageUri }
+    : {
+        image_base64: base64!,
+        mime_type: imageUri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg',
+      };
+
+  const { data, error } = await supabase.functions.invoke('detect-ai', { body });
+
+  if (error) throw new Error(error.message);
+  if (data?.error) throw new Error(data.error);
+  if (typeof data?.probability !== 'number') throw new Error('Invalid response from detect-ai');
+
+  return {
+    probability: data.probability,
+    deepfake:    data.deepfake   ?? 0,
+    generators:  data.generators ?? {},
+  };
 }
 
 function classifyProbability(p: number): ScanResult['classification'] {
@@ -68,7 +68,6 @@ function confidenceFromProbability(p: number): ScanResult['confidenceLevel'] {
 
 export const api = {
   auth: {
-    /** Sign in with email + password */
     login: async (email: string, password: string): Promise<User> => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
@@ -76,30 +75,33 @@ export const api = {
       return mapUser(data.user);
     },
 
-    /** Create new account — saves phone to profiles for uniqueness enforcement */
-    register: async (email: string, password: string, phone?: string): Promise<User> => {
-      // 1. Check phone uniqueness before creating account
+    // register: sends OTP only — account is created when OTP is verified.
+    // We do NOT call signUp here to avoid Supabase sending a confirmation link email.
+    // The password is stored temporarily and used after OTP verification via signUp.
+    register: async (email: string, password: string, phone?: string): Promise<void> => {
+      // Check phone uniqueness — ignore RPC errors (function may not exist yet)
       if (phone) {
-        const { data: taken } = await supabase.rpc('is_phone_taken', { p_phone: phone });
-        if (taken) throw new Error('This phone number is already registered');
+        try {
+          const { data: taken } = await supabase.rpc('is_phone_taken', { p_phone: phone });
+          if (taken) throw new Error('This phone number is already registered');
+        } catch (err: unknown) {
+          // Only re-throw if it's our own error, not an RPC-not-found error
+          if (err instanceof Error && err.message === 'This phone number is already registered') {
+            throw err;
+          }
+          // RPC doesn't exist yet — skip phone check, continue
+        }
       }
 
-      // 2. Create auth account (trigger auto-creates wallet + profile)
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      // Send OTP — shouldCreateUser: true creates the account on verification
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true },
+      });
+
       if (error) throw new Error(error.message);
-      if (!data.user) throw new Error('Registration failed');
-
-      // 3. Save phone to profile
-      if (phone) {
-        await supabase
-          .from('profiles')
-          .upsert({ id: data.user.id, phone, provider: 'email' });
-      }
-
-      return mapUser(data.user);
     },
 
-    /** Sign in with Google ID token (from expo-auth-session) */
     loginWithGoogle: async (idToken: string): Promise<User> => {
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
@@ -107,247 +109,159 @@ export const api = {
       });
       if (error) throw new Error(error.message);
       if (!data.user) throw new Error('Google sign-in failed');
-
-      // Upsert profile with google provider (wallet created by trigger)
-      await supabase
-        .from('profiles')
-        .upsert({ id: data.user.id, provider: 'google' }, { onConflict: 'id' });
-
+      await supabase.from('profiles').upsert({ id: data.user.id, provider: 'google' }, { onConflict: 'id' });
       return mapUser(data.user);
     },
 
-    /** Sign out — clears SecureStore session */
     logout: async (): Promise<void> => {
       const { error } = await supabase.auth.signOut();
       if (error) throw new Error(error.message);
     },
 
-    /** Get current session (used on app startup) */
     getSession: async () => {
       const { data } = await supabase.auth.getSession();
       return data.session;
     },
-
-    /** Check if a phone number is already registered */
-    isPhoneTaken: async (phone: string): Promise<boolean> => {
-      const { data } = await supabase.rpc('is_phone_taken', { p_phone: phone });
-      return !!data;
-    },
   },
 
-  // ─── Scan ──────────────────────────────────────────────────────────────────
+  // ─── Scan ────────────────────────────────────────────────────────────────────
 
   scan: {
-    /**
-     * Upload image to Supabase Storage and return a public URL.
-     * Sightengine requires a publicly accessible URL — local file:// URIs don't work.
-     * Social scan URLs (https://) are passed through directly.
-     */
-    uploadImage: async (imageUri: string, userId: string): Promise<string> => {
-      // Social/web URLs are already public — no upload needed
-      if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
-        return imageUri;
-      }
-
-      // Local file → upload to Supabase Storage
-      const filename = `${userId}/${Date.now()}.jpg`;
-
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-
-      const { error } = await supabase.storage
-        .from('scan-images')
-        .upload(filename, blob, {
-          contentType: 'image/jpeg',
-          upsert: false,
-        });
-
-      if (error) throw new Error(`Storage upload failed: ${error.message}`);
-
-      const { data: urlData } = supabase.storage
-        .from('scan-images')
-        .getPublicUrl(filename);
-
-      return urlData.publicUrl;
-    },
-
-    /** Run AI detection and save result to Supabase */
     analyze: async (
       imageUri: string,
-      userId: string,
+      _userId: string,
       socialMeta?: { platform?: string; postUrl?: string; authorName?: string | null }
     ): Promise<ScanResult> => {
-      // 1. Upload image to get a public URL (required by Sightengine)
-      const publicImageUrl = await api.scan.uploadImage(imageUri, userId);
+      const isRemote = imageUri.startsWith('http://') || imageUri.startsWith('https://');
 
-      // 2. Run AI detection via Edge Function → Sightengine
-      const { probability } = await callAIDetection(publicImageUrl);
+      let base64: string | undefined;
+      if (!isRemote) {
+        base64 = await readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
+      }
 
-      const classification = classifyProbability(probability);
+      const { probability, deepfake, generators } = await callAIDetection(imageUri, base64);
+
+      const classification  = classifyProbability(probability);
       const confidenceLevel = confidenceFromProbability(probability);
 
-      // 3. Persist scan to Supabase
-      const { data, error } = await supabase
-        .from('scans')
-        .insert({
-          user_id: userId,
-          image_url: publicImageUrl,
-          ai_probability: probability,
-          classification,
-          confidence_level: confidenceLevel,
-          social_platform: socialMeta?.platform ?? null,
-          social_post_url: socialMeta?.postUrl ?? null,
-          social_author: socialMeta?.authorName ?? null,
-        })
-        .select()
-        .single();
-
-      if (error) throw new Error(error.message);
-
       return {
-        id: data.id,
-        userId: data.user_id,
-        imageUrl: data.image_url,
-        aiProbability: data.ai_probability,
-        classification: data.classification,
-        confidenceLevel: data.confidence_level,
-        createdAt: data.created_at,
+        id:                  `scan_${Date.now()}`,
+        userId:              _userId,
+        imageUrl:            imageUri,
+        aiProbability:       probability,
+        deepfakeProbability: deepfake,
+        aiGenerators:        Object.keys(generators).length > 0 ? generators : undefined,
+        classification,
+        confidenceLevel,
+        createdAt:           new Date().toISOString(),
+        metadata:            socialMeta ? { socialMeta } : undefined,
       };
-    },
-
-    /** Fetch scan history for a user (latest 50) */
-    getHistory: async (userId: string): Promise<ScanResult[]> => {
-      const { data, error } = await supabase
-        .from('scans')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw new Error(error.message);
-
-      return (data ?? []).map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        imageUrl: row.image_url,
-        aiProbability: row.ai_probability,
-        classification: row.classification,
-        confidenceLevel: row.confidence_level,
-        createdAt: row.created_at,
-      }));
     },
   },
 
-  // ─── Wallet ────────────────────────────────────────────────────────────────
+  // ─── Wallet ──────────────────────────────────────────────────────────────────
 
   wallet: {
-    /** Get wallet for a user */
     getInfo: async (userId: string): Promise<WalletInfo> => {
       const { data, error } = await supabase
         .from('wallets')
-        .select('tokens, total_purchased, total_earned_from_ads')
+        .select('tokens, total_purchased, total_earned_from_ads, total_scans')
         .eq('user_id', userId)
         .single();
 
       if (error) throw new Error(error.message);
 
-      // Count total scans from the scans table
-      const { count } = await supabase
-        .from('scans')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId);
-
       return {
-        tokens: data.tokens,
-        totalScans: count ?? 0,
-        totalPurchased: data.total_purchased,
+        tokens:             data.tokens,
+        totalScans:         data.total_scans ?? 0,
+        totalPurchased:     data.total_purchased,
         totalEarnedFromAds: data.total_earned_from_ads,
       };
     },
 
-    /** Deduct 1 token and log the transaction */
-    deductToken: async (userId: string, scanId: string): Promise<number> => {
-      // Atomic decrement via RPC (avoids race conditions)
-      const { data, error } = await supabase.rpc('deduct_token', {
-        p_user_id: userId,
-        p_scan_id: scanId,
-      });
+    deductToken: async (userId: string): Promise<number> => {
+      const { data, error } = await supabase.rpc('deduct_token', { p_user_id: userId });
 
       if (error) {
-        // Fallback: manual update if RPC not yet created
+        // Fallback manual update if RPC not available
         const { data: wallet } = await supabase
           .from('wallets')
-          .select('tokens')
+          .select('tokens, total_scans')
           .eq('user_id', userId)
           .single();
 
-        const newTokens = (wallet?.tokens ?? 1) - 1;
+        const newTokens = Math.max(0, (wallet?.tokens ?? 1) - 1);
+        const newScans  = (wallet?.total_scans ?? 0) + 1;
+
         await supabase
           .from('wallets')
-          .update({ tokens: Math.max(0, newTokens) })
+          .update({ tokens: newTokens, total_scans: newScans })
           .eq('user_id', userId);
 
-        await supabase.from('token_transactions').insert({
-          user_id: userId,
-          amount: -1,
-          type: 'scan_cost',
-          reference_id: scanId,
-        });
-
-        return Math.max(0, newTokens);
+        return newTokens;
       }
 
       return data as number;
     },
 
-    /** Add tokens from ad reward */
     addAdTokens: async (userId: string, amount: number): Promise<number> => {
-      const { data: wallet } = await supabase
-        .from('wallets')
-        .select('tokens, total_earned_from_ads')
-        .eq('user_id', userId)
-        .single();
-
-      const newTokens = (wallet?.tokens ?? 0) + amount;
-      const newEarned = (wallet?.total_earned_from_ads ?? 0) + amount;
-
-      await supabase
-        .from('wallets')
-        .update({ tokens: newTokens, total_earned_from_ads: newEarned })
-        .eq('user_id', userId);
-
-      await supabase.from('token_transactions').insert({
-        user_id: userId,
-        amount,
-        type: 'ad_reward',
+      // Use RPC for atomic increment to prevent race conditions
+      const { data, error } = await supabase.rpc('add_tokens', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_source: 'ad',
       });
 
-      return newTokens;
+      if (error) {
+        // Fallback manual update
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('tokens, total_earned_from_ads')
+          .eq('user_id', userId)
+          .single();
+
+        const newTokens = (wallet?.tokens ?? 0) + amount;
+        const newEarned = (wallet?.total_earned_from_ads ?? 0) + amount;
+
+        await supabase
+          .from('wallets')
+          .update({ tokens: newTokens, total_earned_from_ads: newEarned })
+          .eq('user_id', userId);
+
+        return newTokens;
+      }
+
+      return data as number;
     },
 
-    /** Add tokens from purchase */
     addPurchasedTokens: async (userId: string, amount: number): Promise<number> => {
-      const { data: wallet } = await supabase
-        .from('wallets')
-        .select('tokens, total_purchased')
-        .eq('user_id', userId)
-        .single();
-
-      const newTokens = (wallet?.tokens ?? 0) + amount;
-      const newPurchased = (wallet?.total_purchased ?? 0) + amount;
-
-      await supabase
-        .from('wallets')
-        .update({ tokens: newTokens, total_purchased: newPurchased })
-        .eq('user_id', userId);
-
-      await supabase.from('token_transactions').insert({
-        user_id: userId,
-        amount,
-        type: 'purchase',
+      // Use RPC for atomic increment to prevent race conditions
+      const { data, error } = await supabase.rpc('add_tokens', {
+        p_user_id: userId,
+        p_amount: amount,
+        p_source: 'purchase',
       });
 
-      return newTokens;
+      if (error) {
+        // Fallback manual update
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('tokens, total_purchased')
+          .eq('user_id', userId)
+          .single();
+
+        const newTokens    = (wallet?.tokens ?? 0) + amount;
+        const newPurchased = (wallet?.total_purchased ?? 0) + amount;
+
+        await supabase
+          .from('wallets')
+          .update({ tokens: newTokens, total_purchased: newPurchased })
+          .eq('user_id', userId);
+
+        return newTokens;
+      }
+
+      return data as number;
     },
   },
 };

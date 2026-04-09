@@ -110,7 +110,7 @@ export function SocialScanScreen({ onGoBack, onPostFetched }: SocialScanScreenPr
     opacity: interpolate(btnGlow.value, [0, 1], [0, 0.22]),
   }));
 
-  // ── Fetch handler ─────────────────────────────────────────────────────────
+  // ── Fetch handler (with 1 automatic retry on network error) ──────────────
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze) return;
     Keyboard.dismiss();
@@ -118,7 +118,7 @@ export function SocialScanScreen({ onGoBack, onPostFetched }: SocialScanScreenPr
     setFetchState('loading');
     setErrorMsg('');
 
-    try {
+    const attempt = async (): Promise<void> => {
       const data = await fetchSocialPost(url);
       if (!data.thumbnailUrl) {
         setFetchState('error');
@@ -127,9 +127,19 @@ export function SocialScanScreen({ onGoBack, onPostFetched }: SocialScanScreenPr
       }
       setFetchState('idle');
       onPostFetched(data.thumbnailUrl, data);
+    };
+
+    try {
+      await attempt();
     } catch {
-      setFetchState('error');
-      setErrorMsg(t.socialScan.fetchError);
+      // Retry once after 1 second
+      try {
+        await new Promise((res) => setTimeout(res, 1000));
+        await attempt();
+      } catch {
+        setFetchState('error');
+        setErrorMsg(t.socialScan.fetchError);
+      }
     }
   }, [url, canAnalyze, t, onPostFetched]);
 
@@ -304,7 +314,13 @@ export function SocialScanScreen({ onGoBack, onPostFetched }: SocialScanScreenPr
               ]}
             >
               <Ionicons name="alert-circle-outline" size={15} color={c.error} />
-              <Text style={[styles.errorText, { color: c.error }]}>{errorMsg}</Text>
+              <Text style={[styles.errorText, { color: c.error, flex: 1 }]}>{errorMsg}</Text>
+              <TouchableOpacity
+                onPress={handleAnalyze}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.retryText, { color: c.primary[500] }]}>Retry</Text>
+              </TouchableOpacity>
             </Animated.View>
           )}
         </Animated.View>
@@ -564,8 +580,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.bodySm,
-    flex: 1,
     lineHeight: 18,
+  },
+  retryText: {
+    ...typography.captionMedium,
+    fontWeight: '700',
   },
 
   // Button

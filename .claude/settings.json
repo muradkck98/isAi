@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_url\":\"https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png\"}')",
+      "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_url\":\"https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png\"}' -v)",
+      "Bash(curl -s -X GET \"https://api.sightengine.com/1.0/check.json?url=https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&models=genai&api_user=32315755&api_secret=aTFKMurPtntvyqe9cLcg8xRTC24rYenu\")",
+      "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_url\":\"https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400\"}')",
+      "Bash(curl -s \"https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=100\" -o /tmp/test.jpg)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_base64\":\"__TRACKED_VAR__\",\"mime_type\":\"image/jpeg\"}')"
+    ]
+  }
+}
