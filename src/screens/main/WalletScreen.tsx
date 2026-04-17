@@ -46,6 +46,7 @@ import type { MainStackParamList } from '../../types';
 // ─── Token Earned Modal ───────────────────────────────────────────────────────
 
 function TokenEarnedModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const scale    = useSharedValue(0.7);
   const opacity  = useSharedValue(0);
   const rotate   = useSharedValue(0);
@@ -97,15 +98,13 @@ function TokenEarnedModal({ visible, onClose }: { visible: boolean; onClose: () 
           </LinearGradient>
 
           {/* Title */}
-          <Text style={modal.title}>+1 Token Earned!</Text>
-          <Text style={modal.subtitle}>
-            Keep watching ads to earn{'\n'}more free tokens
-          </Text>
+          <Text style={modal.title}>{t.wallet.tokenEarned}</Text>
+          <Text style={modal.subtitle}>{t.wallet.tokenEarnedSubtitle}</Text>
 
           {/* Token count pill */}
           <View style={modal.pill}>
             <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-            <Text style={modal.pillText}>Added to your balance</Text>
+            <Text style={modal.pillText}>{t.wallet.tokenAddedBalance}</Text>
           </View>
 
           {/* CTA */}
@@ -115,7 +114,7 @@ function TokenEarnedModal({ visible, onClose }: { visible: boolean; onClose: () 
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={modal.btnGradient}
             >
-              <Text style={modal.btnText}>Continue</Text>
+              <Text style={modal.btnText}>{t.wallet.continueBtn}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
@@ -148,7 +147,7 @@ export function WalletScreen() {
         setShowEarned(true);
       }
     } catch {
-      Alert.alert('Ad Error', 'Could not load ad. Try again later.');
+      Alert.alert(t.empty.somethingWrong, t.wallet.adError);
     } finally {
       setAdLoading(false);
     }
@@ -209,7 +208,7 @@ export function WalletScreen() {
               <View style={styles.adLoadingRow}>
                 <ActivityIndicator size="small" color={c.primary[500]} />
                 <Text style={[styles.adLoadingText, { color: c.neutral[500] }]}>
-                  Loading ad…
+                  {t.wallet.loadingAd}
                 </Text>
               </View>
             ) : (

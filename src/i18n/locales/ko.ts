@@ -66,7 +66,8 @@ export const ko: TranslationKeys = {
     high: '높음', medium: '중간', low: '낮음',
     socialPost: 'SNS 게시물', postedBy: '작성자', probabilityScale: '확률 척도',
     distributionAnalysis: '분포 분석', aiGenerated: 'AI 생성', realHuman: '실제 / 인간',
-    zoneReal: '실제', zoneUncertain: '불확실', zoneAI: 'AI',
+    zoneReal: '실제', zoneLikelyReal: '실제 가능성', zoneUncertain: '불확실', zoneLikelyAI: 'AI 가능성', zoneAI: 'AI',
+    aiGeneratorDetected: 'AI 생성기 감지됨',
   },
   classifications: { ai_generated: 'AI 생성', likely_ai: 'AI 가능성 높음', uncertain: '불확실', likely_real: '실제 가능성 높음', real: '실제 이미지' },
   wallet: {
@@ -74,6 +75,10 @@ export const ko: TranslationKeys = {
     purchased: '구매됨', fromAds: '광고에서', watchAndEarn: '보고 벌기',
     watchAdDescription: '짧은 동영상을 시청하여 1개의 무료 토큰 획득',
     watchAdButton: '광고 보기 → +1 토큰', tokenPacks: '토큰 팩', mostPopular: '가장 인기', perScan: '/스캔',
+    tokenEarned: '+1 토큰 획득!', tokenEarnedSubtitle: '계속 광고를 시청하여\n무료 토큰을 더 벌어보세요',
+    tokenAddedBalance: '잔액에 추가됨', continueBtn: '계속',
+    adError: '광고를 불러올 수 없습니다.', loadingAd: '광고 로딩 중\u2026',
+    adEarned: '\uD83C\uDF89 +1 토큰 획득!', adEarnedBody: '더 많은 광고를 시청하여 토큰을 벌어보세요.',
   },
   history: {
     title: '스캔 기록', totalScans: '총 {count}회 스캔',
@@ -88,6 +93,8 @@ export const ko: TranslationKeys = {
     aboutTitle: 'isAi 정보', aboutBody: 'isAi는 AI 생성 이미지를 감지합니다.\n\n버전 1.0.0\n© 2024 isAi.',
     comingSoon: '곧 출시', comingSoonBody: '이 기능은 향후 업데이트에서 제공됩니다.',
     rateTitle: 'isAi 평가', rateBody: 'isAi가 마음에 드시나요? 평가해 주세요!', feedbackSubject: 'isAi 피드백',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'SNS 게시물 스캔', subtitle: 'Instagram, TikTok, X 또는 Facebook 링크 붙여넣기',

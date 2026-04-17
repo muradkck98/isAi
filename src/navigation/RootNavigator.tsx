@@ -12,7 +12,6 @@ import { useWalletStore } from '../store/useWalletStore';
 import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../types';
 import { validateEnv } from '../config/env';
-import { initializePurchases } from '../lib/purchases';
 import { initializeAds } from '../lib/ads';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -36,7 +35,6 @@ export function RootNavigator() {
       validateEnv();
       await Promise.all([
         initialize(),
-        initializePurchases().catch(() => {}),
         initializeAds().catch(() => {}),
       ]);
       setAppReady(true);

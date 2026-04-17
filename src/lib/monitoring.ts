@@ -10,6 +10,7 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ interface ErrorLog {
 // ─── Session ID ───────────────────────────────────────────────────────────────
 
 const SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-const APP_VERSION = '1.0.0';
+const APP_VERSION = (Constants.expoConfig?.version as string | undefined) ?? '1.0.0';
 const PLATFORM = Platform.OS;
 
 // ─── Event queue (batch flush every 10 events or 30 seconds) ─────────────────

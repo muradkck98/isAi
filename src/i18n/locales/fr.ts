@@ -67,7 +67,8 @@ export const fr: TranslationKeys = {
     high: 'Élevé', medium: 'Moyen', low: 'Faible',
     socialPost: 'Post social', postedBy: 'Par', probabilityScale: 'ÉCHELLE DE PROBABILITÉ',
     distributionAnalysis: 'ANALYSE DE DISTRIBUTION', aiGenerated: 'Généré par IA', realHuman: 'Réel / Humain',
-    zoneReal: 'Réel', zoneUncertain: 'Incertain', zoneAI: 'IA',
+    zoneReal: 'Réel', zoneLikelyReal: 'Probablement réel', zoneUncertain: 'Incertain', zoneLikelyAI: 'Probablement IA', zoneAI: 'IA',
+    aiGeneratorDetected: 'GÉNÉRATEUR IA DÉTECTÉ',
   },
   classifications: { ai_generated: 'Généré par IA', likely_ai: 'Probablement IA', uncertain: 'Incertain', likely_real: 'Probablement réel', real: 'Image réelle' },
   wallet: {
@@ -75,6 +76,10 @@ export const fr: TranslationKeys = {
     purchased: 'Achetés', fromAds: 'Des publicités', watchAndEarn: 'Regarder & gagner',
     watchAdDescription: 'Regardez une courte vidéo pour gagner 1 jeton',
     watchAdButton: 'Regarder → +1 Jeton', tokenPacks: 'Packs de jetons', mostPopular: 'LE PLUS POPULAIRE', perScan: '/scan',
+    tokenEarned: '+1 Jeton Gagné!', tokenEarnedSubtitle: 'Continuez à regarder des pubs\npour gagner plus de jetons',
+    tokenAddedBalance: 'Ajouté à votre solde', continueBtn: 'Continuer',
+    adError: 'Impossible de charger la pub.', loadingAd: 'Chargement\u2026',
+    adEarned: '\uD83C\uDF89 +1 Jeton Gagné!', adEarnedBody: 'Regardez plus de pubs pour plus de jetons.',
   },
   history: {
     title: 'Historique', totalScans: '{count} scan(s) au total',
@@ -89,6 +94,8 @@ export const fr: TranslationKeys = {
     aboutTitle: 'À propos d\'isAi', aboutBody: 'isAi détecte les images générées par IA.\n\nVersion 1.0.0\n© 2024 isAi.',
     comingSoon: 'Bientôt disponible', comingSoonBody: 'Cette fonctionnalité arrive bientôt.',
     rateTitle: 'Noter isAi', rateBody: 'Vous appréciez isAi? Notez-nous!', feedbackSubject: 'Retour isAi',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'Scanner un post', subtitle: 'Collez un lien Instagram, TikTok, X ou Facebook',

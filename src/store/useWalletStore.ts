@@ -84,17 +84,18 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
   },
 
   deductTokenRemote: async (userId) => {
-    get().deductToken();
+    // Local optimistic deduct already called by the navigator before navigating.
+    // This only syncs the authoritative count from Supabase.
     try {
       const newTokens = await api.wallet.deductToken(userId);
       set({ tokens: newTokens });
     } catch {
-      // Rollback optimistic update
+      // Rollback the optimistic local deduct
       set((state) => ({
         tokens: state.tokens + SCAN_COST,
         totalScans: state.totalScans - 1,
       }));
-      throw new Error('Token düşme işlemi başarısız');
+      throw new Error('Token deduction failed');
     }
   },
 
@@ -123,7 +124,7 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
         tokens: state.tokens - amount,
         totalPurchased: state.totalPurchased - amount,
       }));
-      throw new Error('Token ekleme başarısız');
+      throw new Error('Token addition failed');
     }
   },
 

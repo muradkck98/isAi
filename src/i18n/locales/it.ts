@@ -66,7 +66,8 @@ export const it: TranslationKeys = {
     high: 'Alto', medium: 'Medio', low: 'Basso',
     socialPost: 'Post social', postedBy: 'Di', probabilityScale: 'SCALA DI PROBABILITÀ',
     distributionAnalysis: 'ANALISI DISTRIBUZIONE', aiGenerated: 'Generato da AI', realHuman: 'Reale / Umano',
-    zoneReal: 'Reale', zoneUncertain: 'Incerto', zoneAI: 'AI',
+    zoneReal: 'Reale', zoneLikelyReal: 'Probabilmente reale', zoneUncertain: 'Incerto', zoneLikelyAI: 'Probabilmente AI', zoneAI: 'AI',
+    aiGeneratorDetected: 'GENERATORE AI RILEVATO',
   },
   classifications: { ai_generated: 'Generato da AI', likely_ai: 'Probabilmente AI', uncertain: 'Incerto', likely_real: 'Probabilmente reale', real: 'Immagine reale' },
   wallet: {
@@ -74,6 +75,10 @@ export const it: TranslationKeys = {
     purchased: 'Acquistati', fromAds: 'Dagli annunci', watchAndEarn: 'Guarda e guadagna',
     watchAdDescription: 'Guarda un breve video per ottenere 1 token gratuito',
     watchAdButton: 'Guarda annuncio → +1 Token', tokenPacks: 'Pacchetti token', mostPopular: 'PIÙ POPOLARE', perScan: '/scansione',
+    tokenEarned: '+1 Token Guadagnato!', tokenEarnedSubtitle: 'Continua a guardare annunci\nper guadagnare token gratuiti',
+    tokenAddedBalance: 'Aggiunto al tuo saldo', continueBtn: 'Continua',
+    adError: 'Impossibile caricare l\'annuncio.', loadingAd: 'Caricamento annuncio\u2026',
+    adEarned: '\uD83C\uDF89 +1 Token Guadagnato!', adEarnedBody: 'Guarda altri annunci per guadagnare token.',
   },
   history: {
     title: 'Cronologia', totalScans: '{count} scansione/i totali',
@@ -88,6 +93,8 @@ export const it: TranslationKeys = {
     aboutTitle: 'Info su isAi', aboutBody: 'isAi rileva immagini generate da AI.\n\nVersione 1.0.0\n© 2024 isAi.',
     comingSoon: 'Prossimamente', comingSoonBody: 'Questa funzione arriverà in un aggiornamento futuro.',
     rateTitle: 'Valuta isAi', rateBody: 'Ti piace isAi? Valutaci!', feedbackSubject: 'Feedback isAi',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'Scansiona post', subtitle: 'Incolla un link da Instagram, TikTok, X o Facebook',

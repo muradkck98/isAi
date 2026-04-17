@@ -1,8 +1,12 @@
 /**
  * Social Media Post Fetcher
- * Supports: Twitter/X (oEmbed), TikTok (oEmbed), Instagram & Facebook (OG tags)
+ * Supports: Twitter/X (oEmbed), TikTok (oEmbed), Instagram & Facebook (via Edge Function proxy)
+ *
+ * Instagram and Facebook block direct requests from mobile clients.
+ * Requests are proxied through the `fetch-og` Supabase Edge Function.
  */
 
+import { supabase } from '../lib/supabase';
 import type { SocialPlatform, SocialPostMeta } from '../types';
 
 const TIMEOUT_MS = 10_000;
@@ -119,21 +123,20 @@ async function fetchTikTokPost(url: string): Promise<SocialPostMeta> {
 }
 
 async function fetchOGPost(url: string, platform: SocialPlatform): Promise<SocialPostMeta> {
-  const res = await fetchWithTimeout(url, {
-    headers: {
-      Accept: 'text/html,application/xhtml+xml',
-      'User-Agent': 'Mozilla/5.0 (compatible; Twitterbot/1.0)',
-    },
+  // Route through Supabase Edge Function to avoid CORS restrictions on mobile
+  const { data, error } = await supabase.functions.invoke('fetch-og', {
+    body: { url },
   });
-  if (!res.ok) throw new Error(`OG fetch ${res.status}`);
-  const html = await res.text();
+
+  if (error) throw new Error(`OG proxy error: ${error.message}`);
+  if (!data) throw new Error('OG proxy returned no data');
 
   return {
     platform,
     postUrl: url,
-    thumbnailUrl: extractOGMeta(html, 'og:image'),
-    authorName: extractOGMeta(html, 'og:title'),
-    caption: extractOGMeta(html, 'og:description'),
+    thumbnailUrl: data.thumbnailUrl ?? null,
+    authorName: data.authorName ?? null,
+    caption: data.caption ?? null,
   };
 }
 
@@ -152,6 +155,6 @@ export async function fetchSocialPost(url: string): Promise<SocialPostMeta> {
     case 'facebook':
       return fetchOGPost(normalized, platform);
     default:
-      return fetchOGPost(normalized, 'unknown');
+      throw new Error('Unsupported platform');
   }
 }

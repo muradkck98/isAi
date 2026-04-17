@@ -1,349 +1,406 @@
-import React, { useState, useRef, useEffect } from 'react';
+/**
+ * PaywallScreen — RevenueCat native Paywall UI
+ *
+ * Uses react-native-purchases-ui to render the paywall configured in the
+ * RevenueCat dashboard. Falls back to a manual paywall if the native UI is
+ * unavailable (Expo Go / missing native build).
+ *
+ * Products: monthly, yearly, lifetime
+ * Entitlement: "isAi Pro"
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  Platform,
-  Alert,
   ActivityIndicator,
+  Alert,
+  ScrollView,
+  Platform,
 } from 'react-native';
-import Animated, {
-  FadeInUp,
-  FadeInDown,
-  FadeIn,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useTranslation } from '../../hooks/useTranslation';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { radius } from '../../theme/radius';
-import { useWalletStore } from '../../store/useWalletStore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { TOKEN_PACKS } from '../../constants';
+import { useSubscriptionStore } from '../../store/useSubscriptionStore';
+import {
+  getOfferings,
+  purchasePackage,
+  restorePurchases,
+  ENTITLEMENT_ID,
+} from '../../lib/purchases';
 import { haptic } from '../../utils/haptics';
-import { formatPrice } from '../../utils/format';
-import { purchaseTokenPack } from '../../lib/purchases';
-import { showRewardedAd } from '../../lib/ads';
+import { monitoring } from '../../lib/monitoring';
 
-const { width: W, height: H } = Dimensions.get('window');
+// ─── Try to load RevenueCat UI ─────────────────────────────────────────────────
 
-const FEATURES = [
-  { icon: '🔍', title: 'AI Image Detection', desc: 'Powered by Sightengine' },
-  { icon: '⚡', title: 'Instant Analysis', desc: 'Results in under 3 seconds' },
-  { icon: '📱', title: 'Social Media Scan', desc: 'Instagram, TikTok, X, Facebook' },
-  { icon: '📊', title: 'Detailed Reports', desc: 'Probability scores & explanations' },
-  { icon: '🔒', title: 'Privacy First', desc: 'Images never stored permanently' },
-  { icon: '🌍', title: '13 Languages', desc: 'Fully localized experience' },
-];
+let RevenueCatUI: any = null;
+let rcuiAvailable = false;
 
-const SOCIAL_PROOF = [
-  { name: 'Sarah M.', country: '🇺🇸', text: 'Detected a deepfake in seconds. Incredible tool!', stars: 5 },
-  { name: 'Kenji T.', country: '🇯🇵', text: 'Used it to verify news images. Works perfectly.', stars: 5 },
-  { name: 'Ana B.', country: '🇧🇷', text: 'Simple, fast and accurate. Worth every token.', stars: 5 },
-];
+try {
+  RevenueCatUI = require('react-native-purchases-ui').RevenueCatUI;
+  rcuiAvailable = true;
+} catch {
+  if (__DEV__) console.warn('[PaywallScreen] react-native-purchases-ui not available');
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface PaywallScreenProps {
   onClose?: () => void;
-  onPurchase?: (tokens: number) => void;
+  onPurchase?: () => void;
 }
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function PaywallScreen({ onClose, onPurchase }: PaywallScreenProps) {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { tokens, addAdTokensRemote, addPurchasedTokensRemote } = useWalletStore();
   const { user } = useAuthStore();
-  const [selectedPack, setSelectedPack] = useState(
-    TOKEN_PACKS.findIndex((p) => p.popular) ?? 1
-  );
-  const [loading, setLoading] = useState(false);
-  const [adLoading, setAdLoading] = useState(false);
+  const { setFromCustomerInfo } = useSubscriptionStore();
 
-  // Pulse animation for the most popular badge
-  const pulseScale = useSharedValue(1);
-  useEffect(() => {
-    pulseScale.value = withRepeat(
-      withSequence(
-        withTiming(1.05, { duration: 800 }),
-        withTiming(1, { duration: 800 })
-      ),
-      -1,
-      true
+  // If RevenueCat UI is available, render native paywall
+  if (rcuiAvailable) {
+    return (
+      <NativePaywall
+        onClose={onClose}
+        onPurchase={onPurchase}
+        setFromCustomerInfo={setFromCustomerInfo}
+      />
     );
-  }, []);
+  }
 
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-  }));
+  // Fallback: manual paywall for Expo Go / missing native build
+  return (
+    <FallbackPaywall
+      c={c}
+      t={t}
+      user={user}
+      onClose={onClose}
+      onPurchase={onPurchase}
+      setFromCustomerInfo={setFromCustomerInfo}
+    />
+  );
+}
+
+// ─── Native RevenueCat Paywall ────────────────────────────────────────────────
+
+function NativePaywall({
+  onClose,
+  onPurchase,
+  setFromCustomerInfo,
+}: {
+  onClose?: () => void;
+  onPurchase?: () => void;
+  setFromCustomerInfo: (info: any) => void;
+}) {
+  const handlePurchaseCompleted = useCallback(
+    ({ customerInfo }: { customerInfo: any }) => {
+      haptic.success();
+      setFromCustomerInfo(customerInfo);
+      monitoring.track('subscription_purchase_completed', {
+        entitlements: Object.keys(customerInfo?.entitlements?.active ?? {}),
+      });
+      onPurchase?.();
+    },
+    [onPurchase, setFromCustomerInfo]
+  );
+
+  const handleRestoreCompleted = useCallback(
+    ({ customerInfo }: { customerInfo: any }) => {
+      haptic.success();
+      setFromCustomerInfo(customerInfo);
+    },
+    [setFromCustomerInfo]
+  );
+
+  const handleDismiss = useCallback(() => {
+    onClose?.();
+  }, [onClose]);
+
+  // Present as full-screen modal using RevenueCat's presentPaywall
+  // This renders the paywall configured in the RevenueCat dashboard
+  return (
+    <RevenueCatUI.Paywall
+      onPurchaseCompleted={handlePurchaseCompleted}
+      onRestoreCompleted={handleRestoreCompleted}
+      onDismiss={handleDismiss}
+    />
+  );
+}
+
+// ─── Fallback manual paywall ──────────────────────────────────────────────────
+
+const PLAN_CONFIG = [
+  {
+    id: 'monthly' as const,
+    icon: '📅',
+    period: 'Monthly',
+    price: '$4.99',
+    perMonth: '$4.99/mo',
+    highlight: false,
+    badge: null,
+  },
+  {
+    id: 'yearly' as const,
+    icon: '🏆',
+    period: 'Yearly',
+    price: '$29.99',
+    perMonth: '$2.50/mo',
+    highlight: true,
+    badge: 'BEST VALUE — Save 50%',
+  },
+  {
+    id: 'lifetime' as const,
+    icon: '♾️',
+    period: 'Lifetime',
+    price: '$59.99',
+    perMonth: 'One-time',
+    highlight: false,
+    badge: null,
+  },
+];
+
+const FEATURES = [
+  { icon: '🔍', text: 'Unlimited AI image detection' },
+  { icon: '⚡', text: 'Priority scan processing' },
+  { icon: '📱', text: 'Social media post scanning' },
+  { icon: '📊', text: 'Detailed probability reports' },
+  { icon: '🌍', text: '13 language support' },
+  { icon: '🔒', text: 'Privacy-first — no image storage' },
+];
+
+function FallbackPaywall({
+  c,
+  t,
+  user,
+  onClose,
+  onPurchase,
+  setFromCustomerInfo,
+}: {
+  c: any;
+  t: any;
+  user: any;
+  onClose?: () => void;
+  onPurchase?: () => void;
+  setFromCustomerInfo: (info: any) => void;
+}) {
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
+  const [offerings, setOfferings] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    getOfferings().then((o) => {
+      if (o) setOfferings(o);
+    });
+  }, []);
 
   const handlePurchase = async () => {
     haptic.medium();
-    const pack = TOKEN_PACKS[selectedPack];
-    if (!pack || !user?.id) return;
-
     setLoading(true);
     try {
-      const result = await purchaseTokenPack(
-        pack.id,
-        pack.tokens,
-        formatPrice(pack.price, pack.currency)
+      const pkg = offerings?.current?.availablePackages?.find(
+        (p: any) =>
+          p.product.identifier === selectedPlan ||
+          p.packageType?.toLowerCase() === selectedPlan
       );
 
-      if (result.success && result.tokens) {
-        await addPurchasedTokensRemote(user.id, result.tokens);
-        haptic.success();
-        onPurchase?.(result.tokens);
+      if (!pkg) {
+        // RevenueCat not set up yet — show placeholder
+        Alert.alert(
+          'Coming Soon',
+          `isAi Pro ${selectedPlan} plan will be available soon!`,
+          [{ text: 'OK' }]
+        );
+        return;
       }
-      // userCancelled: silently ignore
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Purchase failed';
-      Alert.alert('Purchase Error', msg);
+
+      const result = await purchasePackage(pkg);
+
+      if (result.success && result.customerInfo) {
+        setFromCustomerInfo(result.customerInfo);
+        haptic.success();
+        Alert.alert(
+          '🎉 Welcome to isAi Pro!',
+          'Your subscription is now active. Enjoy unlimited access.',
+          [{ text: 'Continue', onPress: onPurchase }]
+        );
+      } else if (!result.userCancelled && result.error) {
+        Alert.alert(t.empty.somethingWrong, result.error);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleWatchAd = async () => {
-    if (!user?.id || adLoading) return;
-    haptic.medium();
-    setAdLoading(true);
+  const handleRestore = async () => {
+    haptic.light();
+    setRestoring(true);
     try {
-      const result = await showRewardedAd();
-      if (result.earned) {
-        await addAdTokensRemote(user.id);
-        haptic.success();
-        Alert.alert('🎉 +1 Token Earned!', 'Watch more ads to earn more tokens.');
+      const result = await restorePurchases();
+      if (result.success && result.customerInfo) {
+        const isActive = !!result.customerInfo?.entitlements?.active?.[ENTITLEMENT_ID];
+        setFromCustomerInfo(result.customerInfo);
+        Alert.alert(
+          isActive ? '✅ Restored!' : 'Nothing to restore',
+          isActive
+            ? 'Your isAi Pro subscription has been restored.'
+            : 'No active subscription found for this account.'
+        );
+      } else if (result.error) {
+        Alert.alert(t.empty.somethingWrong, result.error);
       }
-    } catch {
-      Alert.alert('Error', 'Could not load ad. Try again later.');
     } finally {
-      setAdLoading(false);
+      setRestoring(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Background */}
-      <LinearGradient
-        colors={['#0F172A', '#1E1040', '#0F172A']}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* Close button */}
+    <View style={[fallback.container, { backgroundColor: '#0F172A' }]}>
+      {/* Close */}
       {onClose && (
-        <Animated.View entering={FadeIn.delay(300)} style={styles.closeContainer}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={styles.closeIcon}>✕</Text>
-          </TouchableOpacity>
-        </Animated.View>
+        <TouchableOpacity
+          onPress={onClose}
+          style={fallback.closeBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="close" size={22} color="rgba(255,255,255,0.6)" />
+        </TouchableOpacity>
       )}
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={fallback.scroll}
         showsVerticalScrollIndicator={false}
-        bounces={false}
       >
-        {/* Hero section */}
-        <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.hero}>
-          {/* Glow */}
-          <View style={styles.glowContainer}>
-            <View style={[styles.glow, { backgroundColor: '#6366F1' }]} />
-          </View>
-
-          {/* Icon */}
+        {/* Hero */}
+        <Animated.View entering={FadeInDown.duration(600).springify()} style={fallback.hero}>
           <LinearGradient
             colors={['#6366F1', '#8B5CF6']}
-            style={styles.heroIcon}
+            style={fallback.heroIcon}
           >
-            <Text style={styles.heroIconText}>✦</Text>
+            <Text style={fallback.heroIconText}>✦</Text>
           </LinearGradient>
-
-          <Text style={styles.heroTitle}>Unlock isAi</Text>
-          <Text style={styles.heroSubtitle}>
-            Get tokens to detect AI-generated images instantly
+          <Text style={fallback.heroTitle}>isAi Pro</Text>
+          <Text style={fallback.heroSubtitle}>
+            Unlimited AI image detection, no tokens needed
           </Text>
-
-          {/* Token balance pill */}
-          <View style={styles.balancePill}>
-            <Text style={styles.balanceIcon}>🪙</Text>
-            <Text style={styles.balanceText}>{tokens} tokens remaining</Text>
-          </View>
         </Animated.View>
 
-        {/* Features grid */}
-        <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.featuresGrid}>
+        {/* Features */}
+        <Animated.View entering={FadeInUp.delay(100).duration(500)} style={fallback.features}>
           {FEATURES.map((f, i) => (
-            <View key={i} style={styles.featureItem}>
-              <Text style={styles.featureIcon}>{f.icon}</Text>
-              <View style={styles.featureText}>
-                <Text style={styles.featureTitle}>{f.title}</Text>
-                <Text style={styles.featureDesc}>{f.desc}</Text>
-              </View>
+            <View key={i} style={fallback.featureRow}>
+              <Text style={fallback.featureIcon}>{f.icon}</Text>
+              <Text style={fallback.featureText}>{f.text}</Text>
             </View>
           ))}
         </Animated.View>
 
-        {/* Divider */}
-        <View style={styles.divider} />
-
-        {/* Token packs */}
-        <Animated.View entering={FadeInUp.delay(300).duration(600)} style={styles.packsSection}>
-          <Text style={styles.sectionTitle}>{t.wallet.tokenPacks}</Text>
-          <Text style={styles.sectionSubtitle}>1 token = 1 scan. No subscription required.</Text>
-
-          {TOKEN_PACKS.map((pack, i) => {
-            const isSelected = selectedPack === i;
-            const perScan = formatPrice(pack.price / pack.tokens, pack.currency);
+        {/* Plans */}
+        <Animated.View entering={FadeInUp.delay(200).duration(500)} style={fallback.plans}>
+          {PLAN_CONFIG.map((plan) => {
+            const isSelected = selectedPlan === plan.id;
             return (
               <TouchableOpacity
-                key={pack.id}
-                onPress={() => { haptic.light(); setSelectedPack(i); }}
+                key={plan.id}
+                onPress={() => { haptic.light(); setSelectedPlan(plan.id); }}
                 activeOpacity={0.85}
               >
-                <Animated.View
+                <View
                   style={[
-                    styles.packCard,
-                    isSelected && styles.packCardSelected,
-                    pack.popular && styles.packCardPopular,
+                    fallback.planCard,
+                    isSelected && fallback.planCardSelected,
                   ]}
                 >
-                  {pack.popular && (
-                    <Animated.View style={[styles.popularBadge, pulseStyle]}>
-                      <LinearGradient
-                        colors={['#6366F1', '#8B5CF6']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.popularBadgeGradient}
-                      >
-                        <Text style={styles.popularBadgeText}>⭐ BEST VALUE</Text>
-                      </LinearGradient>
-                    </Animated.View>
+                  {plan.badge && (
+                    <LinearGradient
+                      colors={['#6366F1', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={fallback.planBadge}
+                    >
+                      <Text style={fallback.planBadgeText}>{plan.badge}</Text>
+                    </LinearGradient>
                   )}
-
-                  <View style={styles.packContent}>
-                    <View style={styles.packLeft}>
-                      <View style={styles.packTokenRow}>
-                        <Text style={styles.packTokenCount}>{pack.tokens}</Text>
-                        <Text style={styles.packTokenLabel}> tokens</Text>
-                      </View>
-                      <Text style={styles.packPerScan}>{perScan}/scan</Text>
+                  <View style={fallback.planContent}>
+                    <Text style={fallback.planIcon}>{plan.icon}</Text>
+                    <View style={fallback.planInfo}>
+                      <Text style={fallback.planPeriod}>{plan.period}</Text>
+                      <Text style={fallback.planPerMonth}>{plan.perMonth}</Text>
                     </View>
-
-                    <View style={styles.packRight}>
-                      <Text style={[styles.packPrice, isSelected && styles.packPriceSelected]}>
-                        {formatPrice(pack.price, pack.currency)}
+                    <View style={fallback.planRight}>
+                      <Text style={[fallback.planPrice, isSelected && { color: '#A78BFA' }]}>
+                        {plan.price}
                       </Text>
                       {isSelected && (
-                        <View style={styles.selectedCheck}>
-                          <LinearGradient
-                            colors={['#6366F1', '#8B5CF6']}
-                            style={styles.selectedCheckGradient}
-                          >
-                            <Text style={styles.selectedCheckIcon}>✓</Text>
-                          </LinearGradient>
+                        <View style={fallback.checkCircle}>
+                          <Ionicons name="checkmark" size={14} color="#fff" />
                         </View>
                       )}
                     </View>
                   </View>
-
-                  {/* Savings tag */}
-                  {pack.tokens >= 50 && (
-                    <View style={styles.savingsTag}>
-                      <Text style={styles.savingsText}>
-                        Save {Math.round((1 - (pack.price / pack.tokens) / (TOKEN_PACKS[0].price / TOKEN_PACKS[0].tokens)) * 100)}%
-                      </Text>
-                    </View>
-                  )}
-                </Animated.View>
+                </View>
               </TouchableOpacity>
             );
           })}
         </Animated.View>
 
-        {/* Social proof */}
-        <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.socialProof}>
-          <View style={styles.starsRow}>
-            <Text style={styles.stars}>★★★★★</Text>
-            <Text style={styles.starsLabel}>4.9 · 2,400+ reviews</Text>
-          </View>
-          {SOCIAL_PROOF.map((r, i) => (
-            <View key={i} style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <Text style={styles.reviewFlag}>{r.country}</Text>
-                <Text style={styles.reviewName}>{r.name}</Text>
-                <Text style={styles.reviewStars}>{'★'.repeat(r.stars)}</Text>
-              </View>
-              <Text style={styles.reviewText}>{r.text}</Text>
-            </View>
-          ))}
-        </Animated.View>
-
-        {/* Bottom padding */}
+        {/* Bottom spacing for sticky footer */}
         <View style={{ height: 160 }} />
       </ScrollView>
 
-      {/* Sticky CTA footer */}
-      <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.stickyFooter}>
+      {/* Sticky footer */}
+      <Animated.View entering={FadeInUp.delay(400)} style={fallback.footer}>
         <LinearGradient
-          colors={['transparent', '#0F172A', '#0F172A']}
-          style={styles.stickyGradient}
+          colors={['transparent', '#0F172A']}
+          style={fallback.footerGradient}
           pointerEvents="none"
         />
-        <View style={styles.stickyContent}>
-          {/* Purchase button */}
+        <View style={fallback.footerContent}>
           <TouchableOpacity
             onPress={handlePurchase}
             disabled={loading}
             activeOpacity={0.88}
-            style={styles.purchaseWrapper}
+            style={fallback.purchaseWrapper}
           >
             <LinearGradient
               colors={['#6366F1', '#8B5CF6']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.purchaseButton}
+              style={fallback.purchaseBtn}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <>
-                  <Text style={styles.purchaseText}>
-                    Get {TOKEN_PACKS[selectedPack]?.tokens ?? 0} Tokens
-                  </Text>
-                  <Text style={styles.purchasePrice}>
-                    {formatPrice(TOKEN_PACKS[selectedPack]?.price ?? 0, TOKEN_PACKS[selectedPack]?.currency ?? 'USD')}
-                  </Text>
-                </>
+                <Text style={fallback.purchaseBtnText}>
+                  Get isAi Pro — {PLAN_CONFIG.find((p) => p.id === selectedPlan)?.price}
+                </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Watch ad */}
           <TouchableOpacity
-            onPress={handleWatchAd}
-            disabled={adLoading}
-            style={styles.adButton}
+            onPress={handleRestore}
+            disabled={restoring}
+            style={fallback.restoreBtn}
           >
-            {adLoading ? (
-              <ActivityIndicator color="rgba(255,255,255,0.5)" size="small" />
+            {restoring ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
             ) : (
-              <Text style={styles.adButtonText}>🎬 Watch ad for +1 free token</Text>
+              <Text style={fallback.restoreBtnText}>Restore Purchases</Text>
             )}
           </TouchableOpacity>
 
-          {/* Legal */}
-          <Text style={styles.legal}>
-            Secure payment · Cancel anytime · No subscription
+          <Text style={fallback.legal}>
+            Subscriptions auto-renew unless cancelled · Lifetime is a one-time purchase
           </Text>
         </View>
       </Animated.View>
@@ -351,324 +408,117 @@ export function PaywallScreen({ onClose, onPurchase }: PaywallScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  closeContainer: {
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const fallback = StyleSheet.create({
+  container: { flex: 1 },
+  closeBtn: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 56 : 44,
     right: spacing.xl,
     zIndex: 20,
-  },
-  closeBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
   },
-  closeIcon: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '600',
-  },
-  scroll: { flex: 1 },
-  scrollContent: {
+  scroll: {
     paddingTop: Platform.OS === 'ios' ? 100 : 80,
     paddingHorizontal: spacing.xl,
   },
 
-  // Hero
-  hero: {
-    alignItems: 'center',
-    marginBottom: spacing['3xl'],
-  },
-  glowContainer: {
-    position: 'absolute',
-    top: -20,
-    alignItems: 'center',
-  },
-  glow: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    opacity: 0.15,
-    // blur is not supported in RN but opacity glow works
-  },
+  hero: { alignItems: 'center', marginBottom: spacing['2xl'] },
   heroIcon: {
-    width: 80,
-    height: 80,
+    width: 72,
+    height: 72,
     borderRadius: radius['2xl'],
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 10,
   },
-  heroIconText: {
-    fontSize: 36,
-    color: '#fff',
-    fontWeight: '800',
-  },
+  heroIconText: { fontSize: 32, color: '#fff', fontWeight: '800' },
   heroTitle: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#fff',
     letterSpacing: -0.5,
     marginBottom: spacing.sm,
   },
   heroSubtitle: {
     ...typography.body,
-    color: 'rgba(255,255,255,0.55)',
+    color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.lg,
-  },
-  balancePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  balanceIcon: { fontSize: 16 },
-  balanceText: {
-    ...typography.bodySm,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '600',
   },
 
-  // Features
-  featuresGrid: {
-    gap: spacing.sm,
-    marginBottom: spacing['2xl'],
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+  features: {
     backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: radius.xl,
-    padding: spacing.md,
+    borderRadius: radius['2xl'],
+    padding: spacing.lg,
+    gap: spacing.md,
+    marginBottom: spacing['2xl'],
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  featureIcon: { fontSize: 22, width: 32, textAlign: 'center' },
-  featureText: { flex: 1 },
-  featureTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  featureDesc: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.45)',
-  },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  featureIcon: { fontSize: 18, width: 28 },
+  featureText: { ...typography.body, color: 'rgba(255,255,255,0.8)', flex: 1 },
 
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginBottom: spacing['2xl'],
-  },
-
-  // Packs
-  packsSection: {
-    marginBottom: spacing['2xl'],
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: spacing.xs,
-    letterSpacing: -0.3,
-  },
-  sectionSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.45)',
-    marginBottom: spacing.xl,
-  },
-  packCard: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  plans: { gap: spacing.md, marginBottom: spacing['2xl'] },
+  planCard: {
     borderRadius: radius['2xl'],
-    padding: spacing.lg,
-    marginBottom: spacing.md,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     overflow: 'hidden',
   },
-  packCardSelected: {
+  planCardSelected: {
     borderColor: '#6366F1',
     backgroundColor: 'rgba(99,102,241,0.12)',
   },
-  packCardPopular: {
-    borderColor: '#8B5CF6',
-  },
-  popularBadge: {
-    position: 'absolute',
-    top: -1,
-    right: spacing.lg,
-    borderBottomLeftRadius: radius.md,
-    borderBottomRightRadius: radius.md,
-    overflow: 'hidden',
-  },
-  popularBadgeGradient: {
-    paddingHorizontal: spacing.md,
+  planBadge: {
     paddingVertical: 5,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
   },
-  popularBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.8,
-  },
-  packContent: {
+  planBadgeText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.8 },
+  planContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
+    padding: spacing.lg,
   },
-  packLeft: {},
-  packTokenRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  packTokenCount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  packTokenLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
-    fontWeight: '500',
-  },
-  packPerScan: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 2,
-  },
-  packRight: {
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-  },
-  packPrice: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.7)',
-  },
-  packPriceSelected: {
-    color: '#A78BFA',
-  },
-  selectedCheck: {
-    overflow: 'hidden',
-    borderRadius: radius.full,
-  },
-  selectedCheckGradient: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  planIcon: { fontSize: 24 },
+  planInfo: { flex: 1 },
+  planPeriod: { ...typography.bodyMedium, color: '#fff' },
+  planPerMonth: { ...typography.caption, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
+  planRight: { alignItems: 'flex-end', gap: 6 },
+  planPrice: { fontSize: 20, fontWeight: '800', color: 'rgba(255,255,255,0.7)' },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#6366F1',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedCheckIcon: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  savingsTag: {
-    marginTop: spacing.sm,
-    backgroundColor: 'rgba(16,185,129,0.15)',
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-  },
-  savingsText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#10B981',
-  },
 
-  // Social proof
-  socialProof: {
-    marginBottom: spacing['2xl'],
-  },
-  starsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  stars: {
-    fontSize: 18,
-    color: '#FBBF24',
-  },
-  starsLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    fontWeight: '600',
-  },
-  reviewCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  reviewFlag: { fontSize: 18 },
-  reviewName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    flex: 1,
-  },
-  reviewStars: {
-    fontSize: 13,
-    color: '#FBBF24',
-  },
-  reviewText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.55)',
-    lineHeight: 19,
-    fontStyle: 'italic',
-  },
-
-  // Sticky footer
-  stickyFooter: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  stickyGradient: {
-    height: 40,
-    marginBottom: -1,
-  },
-  stickyContent: {
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  footerGradient: { height: 40, marginBottom: -1 },
+  footerContent: {
     backgroundColor: '#0F172A',
     paddingHorizontal: spacing.xl,
     paddingBottom: Platform.OS === 'ios' ? 34 : spacing.xl,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     gap: spacing.sm,
   },
   purchaseWrapper: {
@@ -680,35 +530,18 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
-  purchaseButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  purchaseBtn: {
     paddingVertical: 18,
-    paddingHorizontal: spacing['2xl'],
-  },
-  purchaseText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  purchasePrice: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.85)',
-  },
-  adButton: {
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    justifyContent: 'center',
   },
-  adButtonText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
-    fontWeight: '500',
-  },
+  purchaseBtnText: { fontSize: 17, fontWeight: '800', color: '#fff' },
+  restoreBtn: { alignItems: 'center', paddingVertical: spacing.sm },
+  restoreBtnText: { fontSize: 13, color: 'rgba(255,255,255,0.35)', fontWeight: '500' },
   legal: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.25)',
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.2)',
     textAlign: 'center',
+    lineHeight: 15,
   },
 });

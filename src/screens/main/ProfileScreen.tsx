@@ -15,8 +15,10 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useWalletStore } from '../../store/useWalletStore';
 import { useScanStore } from '../../store/useScanStore';
 import { useSettingsStore, type ThemeMode } from '../../store/useSettingsStore';
+import { useSubscriptionStore } from '../../store/useSubscriptionStore';
 import { LANGUAGE_OPTIONS } from '../../i18n';
 import { haptic } from '../../utils/haptics';
+import { presentCustomerCenter } from '../../lib/purchases';
 
 export function ProfileScreen() {
   const c = useThemeColors();
@@ -25,6 +27,7 @@ export function ProfileScreen() {
   const { tokens, totalScans, reset: resetWallet } = useWalletStore();
   const { reset: resetScans } = useScanStore();
   const { language, themeMode, setLanguage, setThemeMode } = useSettingsStore();
+  const { isActive: isPro, plan: subscriptionPlan } = useSubscriptionStore();
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -45,10 +48,7 @@ export function ProfileScreen() {
       {
         text: t.profile.rateApp,
         onPress: () => {
-          // TODO: Replace with your real App Store / Google Play URLs after publishing
-        const url = Platform.OS === 'ios'
-            ? 'https://apps.apple.com/app/id0000000000'  // Replace id0000000000 with your real App Store ID
-            : 'https://play.google.com/store/apps/details?id=com.isai.app';
+          const url = Platform.OS === 'ios' ? t.profile.appStoreUrl : t.profile.playStoreUrl;
           Linking.openURL(url).catch(() => {});
         },
       },
@@ -68,6 +68,7 @@ export function ProfileScreen() {
     Alert.alert(t.profile.comingSoon, t.profile.comingSoonBody);
   };
 
+  const displayName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'User');
   const themeLabel = themeMode === 'light' ? t.profile.lightMode : themeMode === 'dark' ? t.profile.darkMode : t.profile.systemMode;
   const currentLangOpt = LANGUAGE_OPTIONS.find((l) => l.code === language);
   const currentLangLabel = currentLangOpt ? `${currentLangOpt.flag} ${currentLangOpt.nativeLabel}` : '🇺🇸 English';
@@ -78,9 +79,9 @@ export function ProfileScreen() {
         {/* Profile Header */}
         <Animated.View entering={FadeInUp.duration(600).springify()} style={styles.header}>
           <LinearGradient colors={[c.primary[400], c.primary[600]]} style={styles.avatar}>
-            <Text style={styles.avatarText}>{(user?.displayName || 'D')[0].toUpperCase()}</Text>
+            <Text style={styles.avatarText}>{displayName[0].toUpperCase()}</Text>
           </LinearGradient>
-          <Text style={[styles.name, { color: c.neutral[900] }]}>{user?.displayName || 'Detective'}</Text>
+          <Text style={[styles.name, { color: c.neutral[900] }]}>{displayName}</Text>
           <Text style={[styles.email, { color: c.neutral[500] }]}>{user?.email || 'user@example.com'}</Text>
         </Animated.View>
 
@@ -99,7 +100,9 @@ export function ProfileScreen() {
               </View>
               <View style={[styles.statDivider, { backgroundColor: c.neutral[200] }]} />
               <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: c.primary[600] }]}>{t.profile.free}</Text>
+                <Text style={[styles.statValue, { color: isPro ? '#8B5CF6' : c.primary[600] }]}>
+                  {isPro ? (subscriptionPlan === 'lifetime' ? '♾️' : '⭐') + ' Pro' : t.profile.free}
+                </Text>
                 <Text style={[styles.statLabel, { color: c.neutral[500] }]}>{t.profile.plan}</Text>
               </View>
             </View>
@@ -110,6 +113,15 @@ export function ProfileScreen() {
         <Animated.View entering={FadeInUp.delay(300).duration(500)} style={[styles.menu, { backgroundColor: c.neutral[0] }]}>
           <MenuItem emoji="🌐" title={t.profile.language} value={currentLangLabel} onPress={() => { haptic.selection(); setShowLanguagePicker(true); }} c={c} />
           <MenuItem emoji="🎨" title={t.profile.appearance} value={themeLabel} onPress={() => { haptic.selection(); setShowThemePicker(true); }} c={c} />
+          {isPro && (
+            <MenuItem
+              emoji="👑"
+              title="Manage Subscription"
+              value={subscriptionPlan ? subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1) : 'Pro'}
+              onPress={() => { haptic.selection(); presentCustomerCenter(); }}
+              c={c}
+            />
+          )}
           <MenuItem emoji="🔔" title={t.profile.notifications} onPress={handleComingSoon} c={c} />
           <MenuItem emoji="🔒" title={t.profile.privacy} onPress={handleComingSoon} c={c} />
           <MenuItem emoji="📖" title={t.profile.about} onPress={() => { haptic.selection(); setShowAbout(true); }} c={c} />

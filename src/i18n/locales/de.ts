@@ -67,7 +67,8 @@ export const de: TranslationKeys = {
     high: 'Hoch', medium: 'Mittel', low: 'Niedrig',
     socialPost: 'Social Post', postedBy: 'Von', probabilityScale: 'WAHRSCHEINLICHKEITSSKALA',
     distributionAnalysis: 'VERTEILUNGSANALYSE', aiGenerated: 'KI-generiert', realHuman: 'Real / Mensch',
-    zoneReal: 'Real', zoneUncertain: 'Unsicher', zoneAI: 'KI',
+    zoneReal: 'Real', zoneLikelyReal: 'Wahrsch. real', zoneUncertain: 'Unsicher', zoneLikelyAI: 'Wahrsch. KI', zoneAI: 'KI',
+    aiGeneratorDetected: 'KI-GENERATOR ERKANNT',
   },
   classifications: { ai_generated: 'KI-generiert', likely_ai: 'Wahrscheinlich KI', uncertain: 'Unsicher', likely_real: 'Wahrscheinlich real', real: 'Echtes Bild' },
   wallet: {
@@ -75,6 +76,10 @@ export const de: TranslationKeys = {
     purchased: 'Gekauft', fromAds: 'Aus Werbung', watchAndEarn: 'Anschauen & verdienen',
     watchAdDescription: 'Kurzes Video anschauen für 1 kostenlosen Token',
     watchAdButton: 'Werbung anschauen → +1 Token', tokenPacks: 'Token-Pakete', mostPopular: 'BELIEBTESTE', perScan: '/Scan',
+    tokenEarned: '+1 Token verdient!', tokenEarnedSubtitle: 'Schau weiter Werbung, um\nmehr Token zu verdienen',
+    tokenAddedBalance: 'Zu deinem Guthaben hinzugefügt', continueBtn: 'Weiter',
+    adError: 'Werbung konnte nicht geladen werden.', loadingAd: 'Werbung laden\u2026',
+    adEarned: '\uD83C\uDF89 +1 Token verdient!', adEarnedBody: 'Schau mehr Werbung für mehr Token.',
   },
   history: {
     title: 'Scan-Verlauf', totalScans: '{count} Scan(s) gesamt',
@@ -89,6 +94,8 @@ export const de: TranslationKeys = {
     aboutTitle: 'Über isAi', aboutBody: 'isAi erkennt KI-generierte Bilder.\n\nVersion 1.0.0\n© 2024 isAi.',
     comingSoon: 'Demnächst', comingSoonBody: 'Diese Funktion kommt in einem zukünftigen Update.',
     rateTitle: 'isAi bewerten', rateBody: 'Gefällt dir isAi? Bewerte uns!', feedbackSubject: 'isAi Feedback',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'Social Post scannen', subtitle: 'Instagram, TikTok, X oder Facebook Link einfügen',

@@ -167,8 +167,11 @@ export const tr: TranslationKeys = {
     aiGenerated: 'AI Uretimi',
     realHuman: 'Gercek / Insan',
     zoneReal: 'Gercek',
+    zoneLikelyReal: 'Muhtemelen Gercek',
     zoneUncertain: 'Belirsiz',
+    zoneLikelyAI: 'Muhtemelen AI',
     zoneAI: 'AI',
+    aiGeneratorDetected: 'TESPIT EDILEN AI URETICI',
   },
 
   classifications: {
@@ -191,6 +194,14 @@ export const tr: TranslationKeys = {
     tokenPacks: 'Jeton Paketleri',
     mostPopular: 'EN POPULER',
     perScan: '/tarama',
+    tokenEarned: '+1 Jeton Kazanildi!',
+    tokenEarnedSubtitle: 'Daha fazla ucretsiz jeton kazanmak icin\nreklam izlemeye devam edin',
+    tokenAddedBalance: 'Bakiyenize eklendi',
+    continueBtn: 'Devam Et',
+    adError: 'Reklam yuklenemedi. Daha sonra tekrar deneyin.',
+    loadingAd: 'Reklam yukleniyor\u2026',
+    adEarned: '\uD83C\uDF89 +1 Jeton Kazanildi!',
+    adEarnedBody: 'Daha fazla jeton kazanmak icin reklam izleyin.',
   },
 
   history: {
@@ -224,6 +235,8 @@ export const tr: TranslationKeys = {
     rateTitle: 'isAi\'yi Puanla',
     rateBody: 'isAi\'den memnun musunuz? App Store\'da bize puan verin!',
     feedbackSubject: 'isAi Uygulama Geri Bildirimi',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
 
   socialScan: {

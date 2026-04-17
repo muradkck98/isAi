@@ -165,8 +165,11 @@ export const en = {
     aiGenerated: 'AI Generated',
     realHuman: 'Real / Human',
     zoneReal: 'Real',
+    zoneLikelyReal: 'Likely Real',
     zoneUncertain: 'Uncertain',
+    zoneLikelyAI: 'Likely AI',
     zoneAI: 'AI',
+    aiGeneratorDetected: 'AI GENERATOR DETECTED',
   },
 
   classifications: {
@@ -189,6 +192,14 @@ export const en = {
     tokenPacks: 'Token Packs',
     mostPopular: 'MOST POPULAR',
     perScan: '/scan',
+    tokenEarned: '+1 Token Earned!',
+    tokenEarnedSubtitle: 'Keep watching ads to earn\nmore free tokens',
+    tokenAddedBalance: 'Added to your balance',
+    continueBtn: 'Continue',
+    adError: 'Could not load ad. Try again later.',
+    loadingAd: 'Loading ad\u2026',
+    adEarned: '\uD83C\uDF89 +1 Token Earned!',
+    adEarnedBody: 'Watch more ads to earn more tokens.',
   },
 
   history: {
@@ -222,6 +233,8 @@ export const en = {
     rateTitle: 'Rate isAi',
     rateBody: 'Enjoying isAi? Rate us on the App Store!',
     feedbackSubject: 'isAi App Feedback',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
 
   socialScan: {

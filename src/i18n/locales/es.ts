@@ -167,8 +167,11 @@ export const es: TranslationKeys = {
     aiGenerated: 'Generado por IA',
     realHuman: 'Real / Humano',
     zoneReal: 'Real',
+    zoneLikelyReal: 'Probablemente real',
     zoneUncertain: 'Incierto',
+    zoneLikelyAI: 'Probablemente IA',
     zoneAI: 'IA',
+    aiGeneratorDetected: 'GENERADOR IA DETECTADO',
   },
 
   classifications: {
@@ -191,6 +194,14 @@ export const es: TranslationKeys = {
     tokenPacks: 'Paquetes de tokens',
     mostPopular: 'MÁS POPULAR',
     perScan: '/análisis',
+    tokenEarned: '¡+1 Token Ganado!',
+    tokenEarnedSubtitle: 'Sigue viendo anuncios para ganar\nmás tokens gratis',
+    tokenAddedBalance: 'Añadido a tu saldo',
+    continueBtn: 'Continuar',
+    adError: 'No se pudo cargar el anuncio. Inténtalo de nuevo.',
+    loadingAd: 'Cargando anuncio\u2026',
+    adEarned: '\uD83C\uDF89 ¡+1 Token Ganado!',
+    adEarnedBody: 'Mira más anuncios para ganar más tokens.',
   },
 
   history: {
@@ -224,6 +235,8 @@ export const es: TranslationKeys = {
     rateTitle: 'Calificar isAi',
     rateBody: '¿Disfrutas isAi? ¡Califícanos en la App Store!',
     feedbackSubject: 'Comentarios de isAi',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
 
   socialScan: {

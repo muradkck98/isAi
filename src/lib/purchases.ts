@@ -1,33 +1,58 @@
 /**
- * In-App Purchase layer — RevenueCat
+ * RevenueCat In-App Purchase & Subscription layer
  *
- * react-native-purchases requires a custom native build (not supported in Expo Go).
- * The module is loaded dynamically so Expo Go doesn't crash.
+ * Products:
+ *   - lifetime  → one-time purchase, permanent "isAi Pro" access
+ *   - yearly    → annual subscription
+ *   - monthly   → monthly subscription
  *
- * To finish setup:
- * 1. Add to app.json plugins: ["react-native-purchases"]
- * 2. Set EXPO_PUBLIC_REVENUECAT_ANDROID_KEY and EXPO_PUBLIC_REVENUECAT_IOS_KEY in .env
- * 3. Create products in Google Play Console / App Store Connect
- * 4. Add products to RevenueCat with matching IDs: pack_40, pack_120, pack_300
- * 5. Run: npx expo prebuild && npx expo run:android
+ * Entitlement: "isAi Pro"
+ *
+ * react-native-purchases requires a custom native build (not Expo Go).
+ * The module is loaded dynamically so Expo Go doesn't crash at startup.
+ *
+ * Setup checklist:
+ *  1. Add "react-native-purchases" to app.json plugins  ✓
+ *  2. Set EXPO_PUBLIC_REVENUECAT_ANDROID_KEY / IOS_KEY  ✓
+ *  3. Create products in Google Play / App Store Connect
+ *  4. Add products + Entitlement "isAi Pro" in RevenueCat dashboard
+ *  5. npx expo prebuild && npx expo run:android
  */
 
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import { REVENUECAT } from '../config/env';
 import { monitoring, Events } from './monitoring';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface PurchaseResult {
-  success: boolean;
-  tokens?: number;
-  productId?: string;
-  error?: string;
-  userCancelled?: boolean;
+export type PlanType = 'monthly' | 'yearly' | 'lifetime' | null;
+
+export interface SubscriptionStatus {
+  isActive: boolean;
+  plan: PlanType;
+  expiresAt: Date | null;
+  willRenew: boolean;
+  isLifetime: boolean;
 }
 
+export interface PurchaseResult {
+  success: boolean;
+  customerInfo?: any;
+  userCancelled?: boolean;
+  error?: string;
+}
+
+// ─── Entitlement & product identifiers ───────────────────────────────────────
+
+export const ENTITLEMENT_ID = 'isAi Pro';
+
+export const PRODUCT_IDS = {
+  monthly:  'monthly',
+  yearly:   'yearly',
+  lifetime: 'lifetime',
+} as const;
+
 // ─── Native module guard ──────────────────────────────────────────────────────
-// react-native-purchases requires a custom native build — not available in Expo Go
 
 let Purchases: any = null;
 let LOG_LEVEL: any = null;
@@ -35,11 +60,11 @@ let purchasesAvailable = false;
 
 try {
   const mod = require('react-native-purchases');
-  Purchases = mod.default;
+  Purchases = mod.default ?? mod.Purchases ?? mod;
   LOG_LEVEL = mod.LOG_LEVEL;
   purchasesAvailable = true;
 } catch {
-  if (__DEV__) console.warn('[Purchases] react-native-purchases not available (Expo Go)');
+  if (__DEV__) console.warn('[Purchases] react-native-purchases not available (Expo Go or missing native build)');
 }
 
 // ─── Initialization ───────────────────────────────────────────────────────────
@@ -52,15 +77,22 @@ export async function initializePurchases(userId?: string): Promise<void> {
   const apiKey = Platform.OS === 'ios' ? REVENUECAT.IOS_KEY : REVENUECAT.ANDROID_KEY;
 
   if (!apiKey) {
-    if (__DEV__) console.warn('[Purchases] RevenueCat API key not set — purchases disabled');
+    if (__DEV__) console.warn('[Purchases] RevenueCat API key not configured');
     return;
   }
 
   try {
     if (__DEV__) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-    Purchases.configure({ apiKey, appUserID: userId ?? null });
+
+    Purchases.configure({
+      apiKey,
+      appUserID: userId ?? null,
+      // Enable StoreKit2 on iOS 16+ for better purchase reliability
+      usesStoreKit2IfAvailable: true,
+    });
+
     isInitialized = true;
-    if (__DEV__) console.log('[Purchases] RevenueCat initialized');
+    if (__DEV__) console.log('[Purchases] RevenueCat initialized, user:', userId ?? 'anonymous');
   } catch (err) {
     monitoring.captureError(err, { context: 'purchases_init' });
   }
@@ -68,7 +100,9 @@ export async function initializePurchases(userId?: string): Promise<void> {
 
 export function identifyPurchaseUser(userId: string): void {
   if (!purchasesAvailable || !isInitialized) return;
-  Purchases.logIn(userId).catch(() => {});
+  Purchases.logIn(userId).catch((err: unknown) => {
+    monitoring.captureError(err, { context: 'purchases_login' });
+  });
 }
 
 export function resetPurchaseUser(): void {
@@ -76,61 +110,144 @@ export function resetPurchaseUser(): void {
   Purchases.logOut().catch(() => {});
 }
 
-// ─── Purchase flow ────────────────────────────────────────────────────────────
+// ─── Customer info & entitlement check ───────────────────────────────────────
 
-export async function purchaseTokenPack(
-  productId: string,
-  tokenCount: number,
-  price: string
-): Promise<PurchaseResult> {
-  monitoring.track(Events.TOKEN_PURCHASE_STARTED, { productId, tokenCount });
-
-  if (!purchasesAvailable || !isInitialized) {
-    return new Promise((resolve) => {
-      Alert.alert(
-        'Purchase Coming Soon',
-        `${tokenCount} tokens · ${price}\n\nIn-app purchase will be available soon!`,
-        [{ text: 'OK', onPress: () => resolve({ success: false, userCancelled: true }) }]
-      );
-    });
-  }
-
+export async function getCustomerInfo(): Promise<any | null> {
+  if (!purchasesAvailable || !isInitialized) return null;
   try {
-    const offerings = await Purchases.getOfferings();
-    const pkg = offerings.current?.availablePackages.find(
-      (p: any) => p.product.identifier === productId
-    );
-
-    if (!pkg) {
-      throw new Error(`Product "${productId}" not found in RevenueCat offerings`);
-    }
-
-    await Purchases.purchasePackage(pkg);
-    // Consumables don't add entitlements — token credit handled by our wallet API
-
-    monitoring.track(Events.TOKEN_PURCHASE_SUCCESS, { productId, tokenCount });
-    return { success: true, tokens: tokenCount, productId };
-
-  } catch (err: any) {
-    if (err.userCancelled) {
-      return { success: false, userCancelled: true };
-    }
-    monitoring.captureError(err, { context: 'purchase_token_pack', productId });
-    monitoring.track(Events.TOKEN_PURCHASE_FAILED, { productId, error: err.message });
-    return { success: false, error: err.message };
+    return await Purchases.getCustomerInfo();
+  } catch (err) {
+    monitoring.captureError(err, { context: 'get_customer_info' });
+    return null;
   }
 }
 
-export async function restorePurchases(): Promise<boolean> {
+export function parseSubscriptionStatus(customerInfo: any | null): SubscriptionStatus {
+  if (!customerInfo) {
+    return { isActive: false, plan: null, expiresAt: null, willRenew: false, isLifetime: false };
+  }
+
+  const entitlement = customerInfo.entitlements?.active?.[ENTITLEMENT_ID];
+
+  if (!entitlement) {
+    return { isActive: false, plan: null, expiresAt: null, willRenew: false, isLifetime: false };
+  }
+
+  const productId = entitlement.productIdentifier as string;
+  const expiresDateStr: string | null = entitlement.expirationDate ?? null;
+  const isLifetime = entitlement.productIdentifier === PRODUCT_IDS.lifetime || expiresDateStr === null;
+
+  let plan: PlanType = null;
+  if (productId.includes('lifetime')) plan = 'lifetime';
+  else if (productId.includes('yearly') || productId.includes('annual')) plan = 'yearly';
+  else if (productId.includes('monthly')) plan = 'monthly';
+
+  return {
+    isActive: true,
+    plan,
+    expiresAt: expiresDateStr ? new Date(expiresDateStr) : null,
+    willRenew: entitlement.willRenew ?? false,
+    isLifetime,
+  };
+}
+
+export async function checkSubscriptionStatus(): Promise<SubscriptionStatus> {
+  const customerInfo = await getCustomerInfo();
+  return parseSubscriptionStatus(customerInfo);
+}
+
+// ─── Offerings ────────────────────────────────────────────────────────────────
+
+export async function getOfferings(): Promise<any | null> {
+  if (!purchasesAvailable || !isInitialized) return null;
+  try {
+    return await Purchases.getOfferings();
+  } catch (err) {
+    monitoring.captureError(err, { context: 'get_offerings' });
+    return null;
+  }
+}
+
+// ─── Purchase flow ────────────────────────────────────────────────────────────
+
+export async function purchasePackage(pkg: any): Promise<PurchaseResult> {
   if (!purchasesAvailable || !isInitialized) {
-    Alert.alert('Restore Purchases', 'Purchases are not configured yet.');
-    return false;
+    return { success: false, error: 'Purchases not initialized' };
+  }
+
+  monitoring.track(Events.TOKEN_PURCHASE_STARTED, {
+    productId: pkg?.product?.identifier,
+  });
+
+  try {
+    const { customerInfo } = await Purchases.purchasePackage(pkg);
+    const isActive = !!customerInfo.entitlements?.active?.[ENTITLEMENT_ID];
+
+    if (isActive) {
+      monitoring.track(Events.TOKEN_PURCHASE_SUCCESS, {
+        productId: pkg?.product?.identifier,
+      });
+      return { success: true, customerInfo };
+    } else {
+      // Purchase went through but entitlement not active — edge case
+      return { success: false, error: 'Entitlement not activated after purchase' };
+    }
+  } catch (err: any) {
+    if (err?.userCancelled === true) {
+      return { success: false, userCancelled: true };
+    }
+    monitoring.captureError(err, { context: 'purchase_package' });
+    monitoring.track(Events.TOKEN_PURCHASE_FAILED, { error: err?.message });
+    return { success: false, error: err?.message ?? 'Purchase failed' };
+  }
+}
+
+// ─── Restore purchases ────────────────────────────────────────────────────────
+
+export async function restorePurchases(): Promise<PurchaseResult> {
+  if (!purchasesAvailable || !isInitialized) {
+    return { success: false, error: 'Purchases not initialized' };
   }
   try {
-    await Purchases.restorePurchases();
-    return true;
-  } catch (err) {
+    const customerInfo = await Purchases.restorePurchases();
+    const isActive = !!customerInfo.entitlements?.active?.[ENTITLEMENT_ID];
+    return { success: true, customerInfo };
+  } catch (err: any) {
     monitoring.captureError(err, { context: 'restore_purchases' });
-    return false;
+    return { success: false, error: err?.message ?? 'Restore failed' };
   }
+}
+
+// ─── Customer Center (support / manage subscription) ─────────────────────────
+// Shows RevenueCat's built-in support UI: cancel, refund, contact support.
+
+export async function presentCustomerCenter(): Promise<void> {
+  if (!purchasesAvailable || !isInitialized) return;
+  try {
+    // RevenueCat UI package required: react-native-purchases-ui
+    const { RevenueCatUI } = require('react-native-purchases-ui');
+    await RevenueCatUI.presentCustomerCenter();
+  } catch (err) {
+    monitoring.captureError(err, { context: 'customer_center' });
+  }
+}
+
+// ─── Listener ─────────────────────────────────────────────────────────────────
+// Call this once in your root component to react to subscription changes
+// (renewals, cancellations, billing issues) in real time.
+
+export function addCustomerInfoListener(
+  callback: (customerInfo: any) => void
+): (() => void) {
+  if (!purchasesAvailable || !isInitialized) return () => {};
+
+  const listener = Purchases.addCustomerInfoUpdateListener(callback);
+  // Returns an unsubscribe function — call it in useEffect cleanup
+  return () => listener?.remove?.();
+}
+
+// ─── isPro helper ─────────────────────────────────────────────────────────────
+
+export function isPro(customerInfo: any | null): boolean {
+  return !!customerInfo?.entitlements?.active?.[ENTITLEMENT_ID];
 }

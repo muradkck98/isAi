@@ -7,7 +7,12 @@
       "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_url\":\"https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400\"}')",
       "Bash(curl -s \"https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=100\" -o /tmp/test.jpg)",
       "Read(//tmp/**)",
-      "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_base64\":\"__TRACKED_VAR__\",\"mime_type\":\"image/jpeg\"}')"
+      "Bash(curl -s -X POST https://vfumdhdvzffuzvbjznqg.supabase.co/functions/v1/detect-ai -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmdW1kaGR2emZmdXp2Ymp6bnFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NDE5OTQsImV4cCI6MjA4OTMxNzk5NH0.U4UVbH7hcwhOnHcuxlvdo1IBlGmYfv2FLo1YN9ZG2aY' -H 'Content-Type: application/json' -d '{\"image_base64\":\"__TRACKED_VAR__\",\"mime_type\":\"image/jpeg\"}')",
+      "Bash(taskkill /F /IM java.exe)",
+      "Bash(taskkill /F /IM gradle.exe)",
+      "Bash(cmd /c \"taskkill /F /IM java.exe & taskkill /F /IM gradle.exe & echo done\")",
+      "Bash(cmd /c \"taskkill /F /IM java.exe 2>&1 && echo killed java || echo no java\")",
+      "Bash(cmd /c \"taskkill /F /IM gradle.exe 2>&1 && echo killed gradle || echo no gradle\")"
     ]
   }
 }

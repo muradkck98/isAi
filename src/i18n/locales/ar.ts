@@ -66,7 +66,8 @@ export const ar: TranslationKeys = {
     high: 'عالٍ', medium: 'متوسط', low: 'منخفض',
     socialPost: 'منشور اجتماعي', postedBy: 'بقلم', probabilityScale: 'مقياس الاحتمال',
     distributionAnalysis: 'تحليل التوزيع', aiGenerated: 'مولّد بالذكاء الاصطناعي', realHuman: 'حقيقي / إنساني',
-    zoneReal: 'حقيقي', zoneUncertain: 'غير محدد', zoneAI: 'ذكاء اصطناعي',
+    zoneReal: 'حقيقي', zoneLikelyReal: 'على الأرجح حقيقي', zoneUncertain: 'غير محدد', zoneLikelyAI: 'على الأرجح ذكاء اصطناعي', zoneAI: 'ذكاء اصطناعي',
+    aiGeneratorDetected: 'تم اكتشاف مولّد الذكاء الاصطناعي',
   },
   classifications: { ai_generated: 'مولّد بالذكاء الاصطناعي', likely_ai: 'على الأرجح ذكاء اصطناعي', uncertain: 'غير محدد', likely_real: 'على الأرجح حقيقي', real: 'صورة حقيقية' },
   wallet: {
@@ -74,6 +75,10 @@ export const ar: TranslationKeys = {
     purchased: 'تم الشراء', fromAds: 'من الإعلانات', watchAndEarn: 'شاهد واكسب',
     watchAdDescription: 'شاهد مقطعاً قصيراً لكسب رمز مجاني',
     watchAdButton: 'مشاهدة إعلان ← +1 رمز', tokenPacks: 'حزم الرموز', mostPopular: 'الأكثر شيوعاً', perScan: '/مسح',
+    tokenEarned: '+1 رمز مكتسب!', tokenEarnedSubtitle: 'استمر في مشاهدة الإعلانات\nلكسب المزيد من الرموز المجانية',
+    tokenAddedBalance: 'تمت الإضافة إلى رصيدك', continueBtn: 'متابعة',
+    adError: 'تعذّر تحميل الإعلان.', loadingAd: 'جارٍ تحميل الإعلان\u2026',
+    adEarned: '\uD83C\uDF89 +1 رمز مكتسب!', adEarnedBody: 'شاهد المزيد من الإعلانات لكسب الرموز.',
   },
   history: {
     title: 'سجل المسح', totalScans: 'إجمالي {count} عملية مسح',
@@ -88,6 +93,8 @@ export const ar: TranslationKeys = {
     aboutTitle: 'حول isAi', aboutBody: 'يكشف isAi الصور المولّدة بالذكاء الاصطناعي.\n\nالإصدار 1.0.0\n© 2024 isAi.',
     comingSoon: 'قريباً', comingSoonBody: 'ستتوفر هذه الميزة في تحديث قادم.',
     rateTitle: 'تقييم isAi', rateBody: 'هل تستمتع بـ isAi؟ قيّمنا!', feedbackSubject: 'ملاحظات isAi',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'مسح منشور اجتماعي', subtitle: 'الصق رابطاً من Instagram أو TikTok أو X أو Facebook',

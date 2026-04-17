@@ -66,7 +66,8 @@ export const ru: TranslationKeys = {
     high: 'Высокий', medium: 'Средний', low: 'Низкий',
     socialPost: 'Пост', postedBy: 'Автор', probabilityScale: 'ШКАЛА ВЕРОЯТНОСТИ',
     distributionAnalysis: 'АНАЛИЗ РАСПРЕДЕЛЕНИЯ', aiGenerated: 'Сгенерировано ИИ', realHuman: 'Реальное / Человек',
-    zoneReal: 'Реальное', zoneUncertain: 'Неопределённое', zoneAI: 'ИИ',
+    zoneReal: 'Реальное', zoneLikelyReal: 'Вероятно реальное', zoneUncertain: 'Неопределённое', zoneLikelyAI: 'Вероятно ИИ', zoneAI: 'ИИ',
+    aiGeneratorDetected: 'ОБНАРУЖЕН ИИ-ГЕНЕРАТОР',
   },
   classifications: { ai_generated: 'Сгенерировано ИИ', likely_ai: 'Вероятно ИИ', uncertain: 'Неопределённо', likely_real: 'Вероятно реальное', real: 'Реальное изображение' },
   wallet: {
@@ -74,6 +75,10 @@ export const ru: TranslationKeys = {
     purchased: 'Куплено', fromAds: 'Из рекламы', watchAndEarn: 'Смотри и зарабатывай',
     watchAdDescription: 'Посмотрите короткое видео для получения 1 бесплатного токена',
     watchAdButton: 'Смотреть рекламу → +1 Токен', tokenPacks: 'Пакеты токенов', mostPopular: 'САМЫЙ ПОПУЛЯРНЫЙ', perScan: '/скан',
+    tokenEarned: '+1 Токен Получен!', tokenEarnedSubtitle: 'Продолжайте смотреть рекламу\nдля получения токенов',
+    tokenAddedBalance: 'Добавлено к балансу', continueBtn: 'Продолжить',
+    adError: 'Не удалось загрузить рекламу.', loadingAd: 'Загрузка рекламы\u2026',
+    adEarned: '\uD83C\uDF89 +1 Токен Получен!', adEarnedBody: 'Смотрите больше рекламы для токенов.',
   },
   history: {
     title: 'История сканирований', totalScans: 'Всего {count} сканирований',
@@ -88,6 +93,8 @@ export const ru: TranslationKeys = {
     aboutTitle: 'О isAi', aboutBody: 'isAi обнаруживает изображения, созданные ИИ.\n\nВерсия 1.0.0\n© 2024 isAi.',
     comingSoon: 'Скоро', comingSoonBody: 'Функция появится в следующем обновлении.',
     rateTitle: 'Оценить isAi', rateBody: 'Нравится isAi? Оцените нас!', feedbackSubject: 'Отзыв об isAi',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'Сканировать пост', subtitle: 'Вставьте ссылку из Instagram, TikTok, X или Facebook',

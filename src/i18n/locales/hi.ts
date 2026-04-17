@@ -66,7 +66,8 @@ export const hi: TranslationKeys = {
     high: 'उच्च', medium: 'मध्यम', low: 'निम्न',
     socialPost: 'सोशल पोस्ट', postedBy: 'द्वारा', probabilityScale: 'संभावना स्केल',
     distributionAnalysis: 'वितरण विश्लेषण', aiGenerated: 'AI उत्पन्न', realHuman: 'वास्तविक / मानव',
-    zoneReal: 'वास्तविक', zoneUncertain: 'अनिश्चित', zoneAI: 'AI',
+    zoneReal: 'वास्तविक', zoneLikelyReal: 'संभवतः वास्तविक', zoneUncertain: 'अनिश्चित', zoneLikelyAI: 'संभवतः AI', zoneAI: 'AI',
+    aiGeneratorDetected: 'AI जनरेटर पहचाना गया',
   },
   classifications: { ai_generated: 'AI उत्पन्न', likely_ai: 'संभवतः AI', uncertain: 'अनिश्चित', likely_real: 'संभवतः वास्तविक', real: 'वास्तविक छवि' },
   wallet: {
@@ -74,6 +75,10 @@ export const hi: TranslationKeys = {
     purchased: 'खरीदा गया', fromAds: 'विज्ञापनों से', watchAndEarn: 'देखें और कमाएं',
     watchAdDescription: '1 मुफ्त टोकन कमाने के लिए छोटा वीडियो देखें',
     watchAdButton: 'विज्ञापन देखें → +1 टोकन', tokenPacks: 'टोकन पैक', mostPopular: 'सर्वाधिक लोकप्रिय', perScan: '/स्कैन',
+    tokenEarned: '+1 टोकन प्राप्त हुआ!', tokenEarnedSubtitle: 'अधिक मुफ्त टोकन कमाने के लिए\nविज्ञापन देखते रहें',
+    tokenAddedBalance: 'बैलेंस में जोड़ा गया', continueBtn: 'जारी रखें',
+    adError: 'विज्ञापन लोड नहीं हो सका।', loadingAd: 'विज्ञापन लोड हो रहा है\u2026',
+    adEarned: '\uD83C\uDF89 +1 टोकन प्राप्त हुआ!', adEarnedBody: 'टोकन कमाने के लिए और विज्ञापन देखें।',
   },
   history: {
     title: 'स्कैन इतिहास', totalScans: 'कुल {count} स्कैन',
@@ -88,6 +93,8 @@ export const hi: TranslationKeys = {
     aboutTitle: 'isAi के बारे में', aboutBody: 'isAi AI उत्पन्न छवियों का पता लगाता है।\n\nसंस्करण 1.0.0\n© 2024 isAi।',
     comingSoon: 'जल्द आ रहा है', comingSoonBody: 'यह सुविधा भविष्य के अपडेट में आएगी।',
     rateTitle: 'isAi रेट करें', rateBody: 'isAi पसंद है? हमें रेट करें!', feedbackSubject: 'isAi प्रतिक्रिया',
+    appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.isai.app',
   },
   socialScan: {
     title: 'सोशल पोस्ट स्कैन', subtitle: 'Instagram, TikTok, X या Facebook लिंक पेस्ट करें',

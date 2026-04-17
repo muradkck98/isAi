@@ -116,7 +116,7 @@ function HomeStackNavigator() {
                 showNoTokensAlert(navigation);
                 return;
               }
-              deductToken();
+              deductToken(); // optimistic local deduct — remote sync happens after result
               pendingResult.current = runScan(uri, user?.id ?? 'anonymous', undefined);
               navigation.navigate('Processing', { imageUri: uri });
             }}

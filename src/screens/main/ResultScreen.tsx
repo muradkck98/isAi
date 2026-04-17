@@ -40,13 +40,14 @@ const PLATFORM_CFG: Record<SocialPlatform, { label: string; icon: IoniconsName; 
 };
 
 // ─── Score zones (0–100) with colors ─────────────────────────────────────────
+// Labels are looked up from translations at render time via ZONE_KEYS
 const ZONES = [
-  { from: 0,  to: 30,  color: '#10B981', label: 'Gerçek'        },
-  { from: 30, to: 50,  color: '#3B82F6', label: 'Muhtemelen Gerçek' },
-  { from: 50, to: 65,  color: '#94A3B8', label: 'Belirsiz'      },
-  { from: 65, to: 80,  color: '#F59E0B', label: 'Muhtemelen AI' },
-  { from: 80, to: 100, color: '#EF4444', label: 'AI Üretimi'    },
-];
+  { from: 0,  to: 30,  color: '#10B981', key: 'zoneReal'        },
+  { from: 30, to: 50,  color: '#3B82F6', key: 'zoneLikelyReal'  },
+  { from: 50, to: 65,  color: '#94A3B8', key: 'zoneUncertain'   },
+  { from: 65, to: 80,  color: '#F59E0B', key: 'zoneLikelyAI'    },
+  { from: 80, to: 100, color: '#EF4444', key: 'zoneAI'          },
+] as const;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ResultScreenProps {
@@ -61,16 +62,23 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
   const { currentScan } = useScanStore();
   const { width } = useWindowDimensions();
 
-  // Mock data fallback
-  const scan = currentScan || {
-    id: 'mock',
-    userId: 'mock',
-    imageUrl: '',
-    aiProbability: 87.3,
-    classification: 'likely_ai' as const,
-    confidenceLevel: 'high' as const,
-    createdAt: new Date().toISOString(),
-  };
+  if (!currentScan) {
+    return (
+      <Screen inTabNavigator backgroundColor={c.background.secondary}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+          <Text style={{ ...typography.h3, color: c.neutral[900], marginBottom: spacing.sm, textAlign: 'center' }}>
+            {t.empty.somethingWrong}
+          </Text>
+          <Text style={{ ...typography.body, color: c.neutral[500], textAlign: 'center', marginBottom: spacing['2xl'] }}>
+            {t.empty.tryAgainLater}
+          </Text>
+          <Button title={t.result.goHome} onPress={onGoHome} variant="primary" size="lg" />
+        </View>
+      </Screen>
+    );
+  }
+
+  const scan = currentScan;
 
   const classColor = CLASSIFICATION_COLORS[scan.classification];
   const classLabel = t.classifications[scan.classification];
@@ -219,6 +227,7 @@ export function ResultScreen({ onGoHome, onScanAnother }: ResultScreenProps) {
             <View style={styles.zoneLabels}>
               <Text style={[styles.zoneLabelText, { color: '#10B981' }]}>{t.result.zoneReal}</Text>
               <Text style={[styles.zoneLabelText, { color: '#94A3B8' }]}>{t.result.zoneUncertain}</Text>
+              <Text style={[styles.zoneLabelText, { color: '#F59E0B' }]}>{t.result.zoneLikelyAI}</Text>
               <Text style={[styles.zoneLabelText, { color: '#EF4444' }]}>{t.result.zoneAI}</Text>
             </View>
           </Card>
@@ -457,6 +466,7 @@ function AIGeneratorCard({
   classColor: string;
 }) {
   const c = useThemeColors();
+  const { t } = useTranslation();
 
   // Sort by score desc, show all with score > 0
   const sorted = Object.entries(generators)
@@ -479,7 +489,7 @@ function AIGeneratorCard({
   return (
     <Card variant="elevated" padding="lg">
       <Text style={[styles.sectionLabel, { color: c.neutral[400] }]}>
-        AI GENERATOR DETECTED
+        {t.result.aiGeneratorDetected}
       </Text>
 
       <View style={genStyles.list}>

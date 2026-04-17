@@ -10,7 +10,12 @@ import { supabase } from './src/lib/supabase';
 import { useAuthStore } from './src/store/useAuthStore';
 import { useWalletStore } from './src/store/useWalletStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
+import { useSubscriptionStore } from './src/store/useSubscriptionStore';
 import { monitoring, Events } from './src/lib/monitoring';
+import {
+  initializePurchases,
+  addCustomerInfoListener,
+} from './src/lib/purchases';
 
 // Required for expo-web-browser OAuth on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -76,6 +81,25 @@ const errorStyles = StyleSheet.create({
 function AppContent() {
   const { syncFromSupabase } = useWalletStore();
   const { resolveTheme } = useSettingsStore();
+  const { setFromCustomerInfo, sync: syncSubscription } = useSubscriptionStore();
+
+  // ─── RevenueCat initialization ───────────────────────────────────────────
+  useEffect(() => {
+    const userId = useAuthStore.getState().user?.id;
+    initializePurchases(userId).then(() => {
+      // Sync subscription status on boot
+      syncSubscription();
+    });
+
+    // Listen for real-time subscription changes (renewals, cancellations, etc.)
+    const unsubscribe = addCustomerInfoListener((customerInfo) => {
+      setFromCustomerInfo(customerInfo);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [setFromCustomerInfo, syncSubscription]);
 
   useEffect(() => {
     // Resolve theme on system appearance change
